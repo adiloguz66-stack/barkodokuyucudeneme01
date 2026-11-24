@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Depo Sayım v4 — Hızlı Tarama</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --primary: #0f172a;
+      --accent: #10b981;
+      --accent-dark: #059669;
+      --accent-soft: #ecfdf5;
+      --blue: #2563eb;
+      --blue-soft: #eff6ff;
+      --warn: #f59e0b;
+      --warn-soft: #fffbeb;
+      --danger: #ef4444;
+      --danger-soft: #fef2f2;
+      --radius: 14px;
+      --shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding-bottom: 86px;
+      overscroll-behavior-y: contain;
+    }
+
+    header {
+      position: sticky; top: 0; z-index: 30;
+      background: var(--primary); color: #fff;
+      padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .header-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .speed-pill { font-size: 10px; padding: 2px 7px; border-radius: 999px; background: rgba(16, 185, 129, 0.22); color: #6ee7b7; font-weight: 700; }
+    .header-stats { display: flex; gap: 6px; font-size: 12px; }
+    .stat-pill { background: rgba(255,255,255,0.12); padding: 4px 9px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+    .stat-pill span { color: #34d399; }
+
+    main { max-width: 680px; margin: 0 auto; padding: 14px; }
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow);
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      border: none; border-radius: 12px; padding: 12px 16px;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      transition: transform 0.08s ease;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-accent { background: var(--accent); color: #fff; }
+    .btn-outline { background: #fff; color: var(--text); border: 1px solid var(--border); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-soft-danger { background: var(--danger-soft); color: var(--danger); }
+    .btn-sm { padding: 8px 12px; font-size: 13px; border-radius: 9px; }
+    .btn-xs { padding: 5px 9px; font-size: 12px; border-radius: 7px; }
+    .btn-block { width: 100%; }
+
+    #reader-wrap {
+      position: relative; background: #0f172a; border-radius: 12px; overflow: hidden;
+      min-height: 240px; display: flex; align-items: center; justify-content: center;
+    }
+    #reader { width: 100%; }
+    #reader video { border-radius: 12px; object-fit: cover; }
+    .scanner-placeholder { color: #cbd5e1; text-align: center; padding: 36px 20px; font-size: 14px; line-height: 1.5; }
+    .scanner-controls { display: flex; gap: 8px; margin-top: 10px; }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px;
+    }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; border-radius: 999px; transition: .2s; }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px;
+      left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s;
+    }
+    input:checked + .slider { background: var(--accent); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    .input-row { display: flex; gap: 8px; }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .field-label {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; display: block;
+    }
+    input[type="text"], input[type="number"], input[type="password"], select {
+      width: 100%; padding: 11px 12px; border: 1px solid var(--border);
+      border-radius: 10px; font-size: 15px; background: #fff; color: var(--text); outline: none;
+    }
+    input:focus, select:focus { border-color: var(--primary); }
+
+    .last-scan { border-left: 4px solid var(--accent); background: var(--accent-soft); border-color: #a7f3d0; }
+    .last-scan.unlisted { border-left-color: var(--warn); background: var(--warn-soft); border-color: #fde68a; }
+    .last-scan-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;
+      color: var(--accent-dark); margin-bottom: 4px; display: flex; justify-content: space-between;
+    }
+    .last-scan-name { font-size: 15px; font-weight: 700; line-height: 1.3; margin-bottom: 4px; }
+    .last-scan-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+
+    .lot-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .lot-badge { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 7px; background: #fff; border: 1px solid #cbd5e1; color: var(--text); }
+    .lot-badge.skt { border-color: #93c5fd; background: var(--blue-soft); color: #1d4ed8; }
+    .lot-badge.parti { border-color: #cbd5e1; background: #f1f5f9; color: #334155; }
+
+    .quick-qty-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .qty-badge { font-size: 20px; font-weight: 800; min-width: 44px; text-align: center; }
+
+    /* FULL-SCREEN STOCK ENTRY */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: var(--bg); z-index: 100;
+      display: none; flex-direction: column;
+    }
+    .modal-backdrop.open { display: flex; }
+    .fs-header {
+      background: var(--primary); color: #fff; padding: 14px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0;
+    }
+    .fs-header-title { font-size: 16px; font-weight: 700; }
+    .fs-close-btn {
+      background: rgba(255,255,255,0.14); color: #fff; border: none; border-radius: 9px;
+      padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .fs-body { flex: 1; overflow-y: auto; padding: 16px; max-width: 600px; width: 100%; margin: 0 auto; }
+    .fs-product-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 14px;
+      padding: 14px; margin-bottom: 14px; box-shadow: var(--shadow);
+    }
+    .fs-product-name { font-size: 18px; font-weight: 800; line-height: 1.3; margin-bottom: 6px; }
+    .fs-product-meta { font-size: 13px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    .big-qty-box {
+      background: #fff; border: 2px solid var(--primary); border-radius: 16px; padding: 14px; margin-bottom: 14px;
+    }
+    .big-qty-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+    .big-step-btn {
+      width: 60px; height: 60px; border-radius: 14px; border: 1px solid var(--border);
+      background: #f1f5f9; font-size: 30px; font-weight: 800; color: var(--text);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+    }
+    .big-step-btn.plus { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .big-qty-input {
+      height: 60px; font-size: 32px !important; font-weight: 800; text-align: center;
+      border: 2px solid var(--border) !important; border-radius: 14px !important;
+    }
+    .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+    .preset-btn {
+      padding: 10px 6px; border-radius: 10px; border: 1px solid var(--border);
+      background: #f8fafc; font-size: 14px; font-weight: 700; color: var(--text); cursor: pointer;
+    }
+    .fs-footer {
+      background: #fff; border-top: 1px solid var(--border);
+      padding: 12px 16px env(safe-area-inset-bottom, 14px); display: flex; gap: 10px; flex-shrink: 0;
+    }
+    .fs-footer .btn { padding: 15px 16px; font-size: 16px; border-radius: 13px; }
+
+    .ocr-status {
+      display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px;
+      font-size: 13px; font-weight: 600; margin-bottom: 12px;
+      background: var(--blue-soft); color: #1e40af; border: 1px solid #bfdbfe;
+    }
+    .ocr-status.done { background: var(--accent-soft); color: #065f46; border-color: #a7f3d0; }
+    .ocr-status.warn { background: var(--warn-soft); color: #92400e; border-color: #fde68a; }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid currentColor;
+      border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .filter-bar { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; }
+    .filter-bar::-webkit-scrollbar { display: none; }
+    .chip {
+      border: 1px solid var(--border); background: #fff; color: var(--muted);
+      padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer;
+    }
+    .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    .product-item {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .product-item.counted { border-color: #a7f3d0; background: #f0fdf4; }
+    .product-info { min-width: 0; flex: 1; }
+    .product-name { font-size: 14px; font-weight: 600; line-height: 1.3; word-break: break-word; }
+    .product-sub { font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .barcode-tag { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #f1f5f9; padding: 2px 7px; border-radius: 5px; color: #334155; font-weight: 600; }
+    .unlisted-tag { background: #fef3c7; color: #92400e; padding: 2px 7px; border-radius: 5px; font-weight: 600; }
+
+    .qty-stepper { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .step-btn {
+      width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border);
+      background: #fff; font-size: 18px; font-weight: 700; color: var(--text);
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .step-btn.plus { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .step-input { width: 48px !important; height: 34px; padding: 4px !important; text-align: center; font-weight: 700; font-size: 15px !important; }
+
+    nav.bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+      background: #fff; border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      padding: 6px 4px env(safe-area-inset-bottom, 8px);
+    }
+    .nav-btn {
+      border: none; background: transparent; display: flex; flex-direction: column;
+      align-items: center; gap: 3px; padding: 6px 4px; color: var(--muted);
+      font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+    .nav-btn svg { width: 22px; height: 22px; }
+    .nav-btn.active { color: var(--primary); }
+    .nav-btn.active svg { stroke: var(--accent-dark); }
+
+    #toast {
+      position: fixed; top: 64px; left: 50%; transform: translateX(-50%) translateY(-12px);
+      background: #0f172a; color: #fff; padding: 10px 16px; border-radius: 10px;
+      font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none;
+      transition: all 0.2s ease; z-index: 150; max-width: 92%; text-align: center;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.ok { background: var(--accent-dark); }
+    #toast.warn { background: #d97706; }
+
+    .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+    .summary-box { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 10px; text-align: center; }
+    .summary-num { font-size: 20px; font-weight: 800; color: var(--text); }
+    .summary-lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .empty-state { text-align: center; padding: 36px 16px; color: var(--muted); font-size: 14px; }
+    .https-alert {
+      background: var(--warn-soft); border: 1px solid #fde68a; color: #92400e;
+      padding: 10px 12px; border-radius: 10px; font-size: 12px; margin-bottom: 10px; display: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-title">
+    Depo Sayım
+    <span id="hdr-speed-badge" class="speed-pill">HIZLI</span>
+  </div>
+  <div class="header-stats">
+    <div class="stat-pill">Kayıt: <span id="hdr-skus">0</span></div>
+    <div class="stat-pill">Adet: <span id="hdr-total">0</span></div>
+  </div>
+</header>
+
+<div id="toast"></div>
+
+<main>
+  <!-- VIEW 1: TARA -->
+  <section id="view-scan" class="view active">
+    <div id="https-alert" class="https-alert">
+      Kamera izni için dosyanın <strong>HTTPS</strong> üzerinden açılması gerekir. Bilgisayardan el terminali ile kullanıyorsanız direkt aşağıdaki kutuya okutabilirsiniz.
+    </div>
+
+    <div class="card">
+      <div id="reader-wrap">
+        <div id="reader"></div>
+        <div id="scanner-placeholder" class="scanner-placeholder">
+          Kamerayı başlatıp barkodu okutun.<br/>
+          <span style="font-size:12px;color:#94a3b8;">Donanım hızlandırmalı anlık okuma aktiftir.</span>
+        </div>
+      </div>
+
+      <div class="scanner-controls">
+        <button id="btn-cam-toggle" class="btn btn-accent" style="flex:1;" onclick="toggleCamera()">
+          Kamerayı Başlat
+        </button>
+        <button id="btn-torch" class="btn btn-outline" style="display:none;" onclick="toggleTorch()">
+          Fener
+        </button>
+      </div>
+
+      <div class="toggle-row">
+        <div>
+          <div style="font-weight:600;">Parti No &amp; SKT Otomatik Oku</div>
+          <div style="font-size:11px;color:var(--muted);">Kapalıyken en yüksek hızda çalışır (içeriden tek tuşla da okutabilirsiniz)</div>
+        </div>
+        <label class="switch">
+          <input id="chk-auto-ocr" type="checkbox" onchange="savePrefs()" />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div id="last-scan-card" class="card last-scan" style="display:none;">
+      <div class="last-scan-label">
+        <span id="last-scan-status">Son Kayıt</span>
+        <span id="last-scan-time"></span>
+      </div>
+      <div id="last-scan-name" class="last-scan-name"></div>
+      <div id="last-scan-meta" class="last-scan-meta"></div>
+      <div id="last-scan-lots" class="lot-badges"></div>
+      <div class="quick-qty-bar">
+        <button class="btn btn-outline btn-sm" onclick="adjustLast(-1)">-1</button>
+        <div id="last-scan-qty" class="qty-badge">0</div>
+        <button class="btn btn-primary btn-sm" onclick="adjustLast(1)">+1</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:auto;" onclick="openModalForLast()">Düzenle</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--muted);">
+        Barkod Elle Gir / Bluetooth &amp; USB Barkod Okuyucu
+      </div>
+      <form class="input-row" onsubmit="handleManualBarcode(event)">
+        <input id="manual-barcode" type="text" inputmode="numeric" placeholder="Barkod okutun veya yazın..." autocomplete="off" />
+        <button type="submit" class="btn btn-primary">Aç</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- VIEW 2: LİSTE -->
+  <section id="view-list" class="view">
+    <div class="card" style="padding:12px;">
+      <input id="search-input" type="text" placeholder="Ürün adı, barkod veya marka ara..." oninput="resetAndRenderList()" />
+      <div style="margin-top:8px;">
+        <select id="brand-filter" onchange="resetAndRenderList()" style="padding:8px 10px;font-size:13px;">
+          <option value="">Tüm Markalar</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <button class="chip active" data-filter="all" onclick="setListFilter('all', this)">Tümü</button>
+      <button class="chip" data-filter="counted" onclick="setListFilter('counted', this)">Sayılanlar</button>
+      <button class="chip" data-filter="uncounted" onclick="setListFilter('uncounted', this)">Sayılmayanlar</button>
+      <button class="chip" data-filter="unlisted" onclick="setListFilter('unlisted', this)">Listede Olmayan</button>
+    </div>
+
+    <div id="list-count-info" style="font-size:12px;color:var(--muted);margin:0 0 8px 4px;"></div>
+    <div id="product-list"></div>
+    <button id="btn-load-more" class="btn btn-outline btn-block" style="display:none;margin-top:8px;" onclick="loadMoreList()">
+      Daha Fazla Göster
+    </button>
+  </section>
+
+  <!-- VIEW 3: SAYILANLAR -->
+  <section id="view-counted" class="view">
+    <div class="summary-grid">
+      <div class="summary-box">
+        <div id="sum-skus" class="summary-num">0</div>
+        <div class="summary-lbl">Sayılan Parti</div>
+      </div>
+      <div class="summary-box">
+        <div id="sum-total" class="summary-num">0</div>
+        <div class="summary-lbl">Toplam Adet</div>
+      </div>
+      <div class="summary-box">
+        <div id="sum-catalog" class="summary-num">0</div>
+        <div class="summary-lbl">Katalog</div>
+      </div>
+    </div>
+
+    <button class="btn btn-accent btn-block" style="margin-bottom:12px;" onclick="exportToExcel()">
+      Parti &amp; SKT Detaylı Excel İndir (.xlsx)
+    </button>
+
+    <div id="counted-list"></div>
+  </section>
+
+  <!-- VIEW 4: EXCEL & AYARLAR -->
+  <section id="view-settings" class="view">
+    <div class="card">
+      <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Excel Çıktısı Al</div>
+      <button class="btn btn-accent btn-block" onclick="exportToExcel()">
+        Sayım Excel Dosyasını İndir (.xlsx)
+      </button>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Hızlı AI OCR (Opsiyonel)</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.45;">
+        Parti No ve SKT okumak için ücretsiz <strong>Gemini API Anahtarı</strong> (aistudio.google.com) girerseniz 1 saniyede ve %99 doğrulukla okur. Boş bırakılırsa dahili OCR çalışır.
+      </div>
+      <label class="field-label">Gemini API Anahtarı</label>
+      <div class="input-row">
+        <input id="gemini-api-key" type="password" placeholder="AIzaSy..." autocomplete="off" />
+        <button class="btn btn-primary btn-sm" onclick="saveApiKey()">Kaydet</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Yeni Ürün Listesi Yükle (.xlsx)</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+        Güncel ürün listeniz yüklü (<strong id="catalog-size-label">0</strong> ürün).
+      </div>
+      <input type="file" id="excel-upload" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleExcelUpload(event)" />
+      <button class="btn btn-outline btn-block" onclick="document.getElementById('excel-upload').click()">
+        Excel Dosyası Seç ve Yükle
+      </button>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Yedekleme ve Sıfırlama</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-outline btn-block" onclick="exportBackupJSON()">JSON Yedeği İndir</button>
+        <input type="file" id="json-upload" accept=".json" style="display:none;" onchange="importBackupJSON(event)" />
+        <button class="btn btn-outline btn-block" onclick="document.getElementById('json-upload').click()">JSON Yedeği Geri Yükle</button>
+        <button class="btn btn-soft-danger btn-block" style="margin-top:6px;" onclick="resetCounts()">Sayım Kayıtlarını Sıfırla</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav class="bottom-nav">
+  <button class="nav-btn active" onclick="switchView('scan', this)">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 12h10" />
+    </svg>
+    <span>Tara</span>
+  </button>
+  <button class="nav-btn" onclick="switchView('list', this)">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+    <span>Liste</span>
+  </button>
+  <button class="nav-btn" onclick="switchView('counted', this)">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <span>Sayılanlar</span>
+  </button>
+  <button class="nav-btn" onclick="switchView('settings', this)">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+    </svg>
+    <span>Excel</span>
+  </button>
+</nav>
+
+<!-- TAM EKRAN STOK GİRİŞ PENCERESİ -->
+<div id="qty-modal" class="modal-backdrop">
+  <div class="fs-header">
+    <div id="modal-title" class="fs-header-title">Stok Girişi</div>
+    <button class="fs-close-btn" onclick="closeQtyModal()">Kapat</button>
+  </div>
+
+  <div class="fs-body">
+    <div class="fs-product-card">
+      <div id="modal-product-name" class="fs-product-name"></div>
+      <div id="modal-product-meta" class="fs-product-meta"></div>
+    </div>
+
+    <div id="modal-name-wrap" class="card" style="display:none;">
+      <label class="field-label">Ürün Adı (Listede Olmayan)</label>
+      <input id="modal-unlisted-name" type="text" placeholder="Örn: Yeni Gelen Ürün..." />
+    </div>
+
+    <div class="big-qty-box">
+      <label id="modal-qty-label" class="field-label" style="text-align:center;font-size:12px;">Sayılan Adet (Eklenecek)</label>
+      <div class="big-qty-row">
+        <button type="button" class="big-step-btn" onclick="stepModalQty(-1)">−</button>
+        <input id="modal-qty-input" class="big-qty-input" type="number" inputmode="numeric" min="0" value="1" onfocus="this.select()" />
+        <button type="button" class="big-step-btn plus" onclick="stepModalQty(1)">+</button>
+      </div>
+      <div class="preset-grid">
+        <button type="button" class="preset-btn" onclick="setModalQty(1)">1</button>
+        <button type="button" class="preset-btn" onclick="setModalQty(5)">5</button>
+        <button type="button" class="preset-btn" onclick="setModalQty(10)">10</button>
+        <button type="button" class="preset-btn" onclick="setModalQty(12)">12</button>
+        <button type="button" class="preset-btn" onclick="stepModalQty(5)">+5</button>
+        <button type="button" class="preset-btn" onclick="stepModalQty(10)">+10</button>
+        <button type="button" class="preset-btn" onclick="setModalQty(24)">24</button>
+        <button type="button" class="preset-btn" onclick="setModalQty(50)">50</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="modal-ocr-status" class="ocr-status" style="display:none;">
+        <div class="spinner" id="modal-ocr-spinner"></div>
+        <span id="modal-ocr-text">Parti No ve SKT okunuyor...</span>
+      </div>
+
+      <div class="field-grid" style="margin-bottom:10px;">
+        <div>
+          <label class="field-label">Parti No / Lot</label>
+          <input id="modal-parti-input" type="text" placeholder="Örn: 25K0623A" autocomplete="off" style="text-transform:uppercase;" />
+        </div>
+        <div>
+          <label class="field-label">SKT / TETT (AA/YYYY)</label>
+          <input id="modal-skt-input" type="text" placeholder="Örn: 09/2027" autocomplete="off" />
+        </div>
+      </div>
+
+      <input type="file" id="label-photo-input" accept="image/*" capture="environment" style="display:none;" onchange="handleLabelPhotoFile(event)" />
+      <button type="button" class="btn btn-outline btn-sm btn-block" onclick="document.getElementById('label-photo-input').click()">
+        Etiket Fotoğrafı Çek (Parti / SKT Oku)
+      </button>
+    </div>
+  </div>
+
+  <div class="fs-footer">
+    <button class="btn btn-outline" style="flex:1;" onclick="closeQtyModal()">İptal</button>
+    <button class="btn btn-accent" style="flex:2;" onclick="confirmQtyModal()">Kaydet</button>
+  </div>
+</div>
+
+<canvas id="ocr-canvas" style="display:none;"></canvas>
+
+<script>
+  const DEFAULT_CATALOG = [{"b":"033984000544","n":"Solgar Alpha Lipoic Acid 600 mg 50 Tablet","m":"Solgar","k":"1"},{"b":"033984000551","n":"Solgar Alpha Lipoic Acid 60 mg 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984000568","n":"Solgar Alpha Lipoic Acid 60 mg 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984000582","n":"Solgar Alpha Lipoic Acid 200 mg 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984001008","n":"Solgar Amino 75™ 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984001404","n":"Solgar L-Arginine 500 mg 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984001503","n":"Solgar L-Arginine 1000 mg 90 Tablet","m":"Solgar","k":"1"},{"b":"033984001954","n":"Solgar BCAA Plus 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984002357","n":"Solgar Beta Glucans 60 Tablet","m":"Solgar","k":"1"},{"b":"033984003101","n":"Solgar Biotin 1000 mcg 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984003132","n":"Solgar Biotin 5000 mcg 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984003705","n":"Solgar L-Glutathione 250 mg 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984004009","n":"Solgar Brewer’s Yeast with Vitamin B12 250 Tablet","m":"Solgar","k":"1"},{"b":"033984004016","n":"SOLGAR QUERCETIN COMPLEX 50 CAP.","m":"Solgar","k":"1"},{"b":"033984004085","n":"Solgar Chewable Vitamin C 500 mg 90 Çiğneme tableti","m":"Solgar","k":"1"},{"b":"033984004153","n":"Solgar Calcium 600 (Oyster Shell) 60 Tablet","m":"Solgar","k":"1"},{"b":"033984004276","n":"Solgar Comfort Zone Digestive Complex 90 Kapsül","m":"Solgar","k":"1"},{"b":"033984004306","n":"Solgar Calcium Citrate with Vitamin D3 60 Tablet","m":"Solgar","k":"1"},{"b":"033984004641","n":"Solgar Bromelain 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984005150","n":"Solgar Calcium Magnesium Plus Boron 100 Tablet","m":"Solgar","k":"1"},{"b":"033984005181","n":"Solgar Calcium Magnesium with Vitamin D3 150 Tablet","m":"Solgar","k":"1"},{"b":"033984005204","n":"Solgar Calcium Magnesium Plus Zinc 100 Tablet","m":"Solgar","k":"1"},{"b":"033984005709","n":"Solgar L-Carnitine 500 mg 30 Tablet","m":"Solgar","k":"1"},{"b":"033984006287","n":"Solgar Zinc Picolinate 15 mg","m":"Solgar","k":"1"},{"b":"033984007666","n":"Solgar Advanced Acidophilus Plus 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984007673","n":"Solgar Advanced Multi-Billion Dophilus™ 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984007765","n":"Solgar Advanced 40+ Acidophilus 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984008663","n":"Solgar Chromium Picolinate 200 mcg 90 Kapsül","m":"Solgar","k":"1"},{"b":"033984008779","n":"Solgar Cinnamon 100 Kapsül","m":"Solgar","k":"1"},{"b":"033984009165","n":"SOLGAR NUTRI-NANO COQ-10 3.1X 50 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984009318","n":"Solgar Coenzyme Q-10 30 mg 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984009325","n":"Solgar Coenzyme Q-10 30 mg 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984009400","n":"Solgar Cod Liver Oil 100 Yumuşak jelatin kapsül","m":"Solgar","k":"1"},{"b":"033984009479","n":"Solgar Coenzyme Q-10 100 mg 30 Yumuşak Jelatin Kapsül","m":"Solgar","k":"1"},{"b":"033984009486","n":"Solgar Coenzyme Q-10 200 mg 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984009523","n":"Solgar Coenzyme Q-10 100 mg 60 Yumuşak Jelatin Kapsül","m":"Solgar","k":"1"},{"b":"033984009554","n":"Solgar Cranberry With Vitamin C 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984009561","n":"Solgar Coenzyme Q-10 60 mg 30 Yumuşak jelatin kapsül","m":"Solgar","k":"1"},{"b":"033984009820","n":"Solgar Passiflora Complex 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984010185","n":"Solgar Kangavites® Multivitamin & Mineral 60 Tablet","m":"Solgar","k":"1"},{"b":"033984010383","n":"Solgar Ester-C™ Plus 500 mg 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984010390","n":"Solgar Ester-C™ Plus 500 mg 100 Kapsül","m":"Solgar","k":"1"},{"b":"033984010406","n":"Solgar Evening Primrose Oil 500 mg 30 Softjel kapsül","m":"Solgar","k":"1"},{"b":"033984010413","n":"Solgar Evening Primrose Oil 500 mg 60 Softjel  kapsül","m":"Solgar","k":"1"},{"b":"033984010420","n":"Solgar Evening Primrose Oil 500 mg 90 Softjel  kapsül","m":"Solgar","k":"1"},{"b":"033984010505","n":"Solgar Ester-C™ Plus 1000 mg 30 Tablet","m":"Solgar","k":"1"},{"b":"033984010512","n":"Solgar Ester-C™ Plus 1000 mg 60 Tablet","m":"Solgar","k":"1"},{"b":"033984010567","n":"Solgar Evening Primrose Oil 1300 mg 30 Softjel kapsül","m":"Solgar","k":"1"},{"b":"033984010703","n":"Solgar Flaxseed Oil 1250 mg 100 Yumuşak jelatin kapsül","m":"Solgar","k":"1"},{"b":"033984010741","n":"Solgar Female Multiple 60 Tablet","m":"Solgar","k":"1"},{"b":"033984010802","n":"Solgar Folic Acid (Folacin) 400 mcg 100 Tablet","m":"Solgar","k":"1"},{"b":"033984011205","n":"Solgar Vitamin B-Complex \"50\" 50 Bitkisel Kapsül","m":"Solgar","k":"1"},{"b":"033984011212","n":"SOLGAR VITAMIN B-COMPLEX \"50\" 100 CAP.","m":"Solgar","k":"1"},{"b":"033984011809","n":"SOLGAR VM-75 30 TAB.","m":"Solgar","k":"1"},{"b":"033984011816","n":"Solgar VM-75™ 60 Tablet","m":"Solgar","k":"1"},{"b":"033984011892","n":"SOLGAR VM-2000 180 TAB.","m":"Solgar","k":"1"},{"b":"033984012202","n":"Solgar Garlic Oil Perles 100 Softjel kapsül","m":"Solgar","k":"1"},{"b":"033984012547","n":"Solgar L-Glutamine 1000 mg 60 Tablet","m":"Solgar","k":"1"},{"b":"033984012653","n":"Solgar Taurin 500 mg 50 Kapsül","m":"Solgar","k":""},{"b":"033984013186","n":"Solgar Glucosamine Chondroitin MSM 60 Tablet","m":"Solgar","k":"1"},{"b":"033984013193","n":"Solgar Glucosamine Chondroitin MSM 120 Tablet","m":"Solgar","k":"1"},{"b":"033984013551","n":"Solgar Grape Seed Extract 100 mg 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984014176","n":"Solgar Hyaluronic Acid Collagen Complex 30 Tablet","m":"Solgar","k":"1"},{"b":"033984014480","n":"Solgar 5-HTP 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984014749","n":"SOLGAR SOYA ISOFLAVONES 60 TAB.","m":"Solgar","k":"1"},{"b":"033984014787","n":"Solgar Soya Isoflavones 30 Tablet","m":"Solgar","k":"1"},{"b":"033984014787-sanal","n":"SOLGAR SOYA ISOFLAVONES 30 TAB.","m":"Solgar","k":"1"},{"b":"033984015401","n":"SOLGAR SOYA LECITHIN 1360 MG 100 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984015456","n":"SOLGAR CELLULAR ENERGY 14 V-CAP","m":"Solgar","k":"1"},{"b":"033984015463","n":"SOLGAR CELLULAR ENERGY 28 V-CAP","m":"Solgar","k":"1"},{"b":"033984015555","n":"Solgar Magnesium Glycinate 60 Kapsül Takviye Edici Gıda","m":"Solgar","k":"1"},{"b":"033984016118","n":"Solgar Choline Inositol Methionine 50 Tablet","m":"","k":"1"},{"b":"033984016132","n":"Solgar Methylcobalamin 1000 mcg 60 Tablet","m":"Solgar","k":"1"},{"b":"033984016804","n":"Solgar L-Lysine 500 mg 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984017108","n":"Solgar Magnesium Citrate 200 mg 60 Tablet","m":"Solgar","k":"1"},{"b":"033984017207","n":"Solgar Magnesium with Vitamin B6 100 Tablet","m":"Solgar","k":"1"},{"b":"033984017245","n":"Solgar Male Multiple 60 Tablet","m":"Solgar","k":"1"},{"b":"033984017351","n":"Solgar Skin, Nails & Hair* With MSM 60 Tablet","m":"Solgar","k":"1"},{"b":"033984017603","n":"Solgar Fish Oil Concentrate 1000 mg 60 Softjel  kapsül","m":"Solgar","k":"1"},{"b":"033984017740","n":"Solgar Biotin 5000 mcg 100 Tablet","m":"Solgar","k":"1"},{"b":"033984017870","n":"Solgar Multiple Fiber Formula 120 Kapsül","m":"Solgar","k":"1"},{"b":"033984018358","n":"Solgar Nero Nutrients 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984019102","n":"SOLGAR NO FLUSH NIACIN 500 MG 50 CAP.","m":"Solgar","k":"1"},{"b":"033984019409","n":"Solgar Folate (Metafolin®) 400 mcg 50 Tablet","m":"Solgar","k":"1"},{"b":"033984019508","n":"Solgar Methylcobalamin 1000 mcg 30 Tablet","m":"Solgar","k":"1"},{"b":"033984020276","n":"SOLGAR OMEGA 3-6-9 60 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984020306","n":"Solgar Beta Carotene 7 mg 60 Softjel Kapsül","m":"Solgar","k":"1"},{"b":"033984020504","n":"SOLGAR OMEGA 3 700 MG 30 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984020511","n":"SOLGAR OMEGA 3 700 MG 60 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984020573","n":"Solgar Omega 3 950 mg 50 Yumuşak Jelatinli Kapsül","m":"Solgar","k":"1"},{"b":"0339840205730","n":"SOLGAR OMEGA 3 950 MG 50 SOFTGEL","m":"SOLGAR VITAMIN VE SAGLIK URUN. SAN.VE TIC. A.S.","k":"1"},{"b":"033984020580","n":"SOLGAR OMEGA 3 950 MG 100 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984020658","n":"Solgar Omnium™ 30 Tablet Vitamin Mineral ve Fitobesin","m":"Solgar","k":"1"},{"b":"033984022058","n":"SOLGAR PHYTOSTEROL COMPLEX 100 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984023031","n":"SOLGAR PYCNOGENOL 30 VCAPS","m":"Solgar","k":"1"},{"b":"033984023154","n":"SOLGAR PSYLLIUM HUSKS FIBRE 200 CAP.","m":"Solgar","k":"1"},{"b":"033984023277","n":"SOLGAR REISHI SHIITAKE MAITAKE MUSHROOM EXTRACT 50 CAP.","m":"Solgar","k":"1"},{"b":"033984023352","n":"SOLGAR RESVERATROL 60 CAP.","m":"Solgar","k":"1"},{"b":"033984023802","n":"SOLGAR VITAMIN C 500 MG WITH ROSE HIPS 100 TAB.","m":"Solgar","k":"1"},{"b":"033984025516","n":"Solgar Selenium 100 mcg 100 Tablet","m":"Solgar","k":"1"},{"b":"033984026414","n":"SOLGAR UBIQUINOL 100 MG 50 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984027145","n":"SOLGAR TONALIN CLA 60 SOFTGEL","m":"Solgar","k":"1"},{"b":"033984027602","n":"Solgar L-Tyrosine 500 mg 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984028005","n":"Solgar Digestive Enzymes 50 Tablet","m":"Solgar","k":"1"},{"b":"033984028043","n":"Solgar Kangavites® Vitamin C 100 mg 90 Tablet","m":"Solgar","k":"1"},{"b":"033984029507","n":"SOLGAR VITAMIN B1 (THIAMIN) 100 MG 100 CAP.","m":"Solgar","k":"1"},{"b":"033984030503","n":"Solgar Vitamin B2 (Riboflavin) 100 Mg 100 Kapsül","m":"Solgar","k":"1"},{"b":"033984032095","n":"Solgar Vitamin B12 500 mg 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984032293","n":"SOLGAR VITAMIN B12 1000 MCG 100 NUG.","m":"Solgar","k":"1"},{"b":"033984032293-sanal","n":"SOLGAR VITAMIN B12 1000 MCG 100 NUG.","m":"Solgar","k":"1"},{"b":"033984032750","n":"Solgar Vitamin C 1000 mg 90 Tablet","m":"Solgar","k":"1"},{"b":"033984033405","n":"Solgar Vitamin D3 1000 Iu 25 Mcg 100 Yumuşak Kapsül","m":"Solgar","k":"1"},{"b":"033984035058","n":"SOLGAR VITAMIN E 200 IU 50 SOFT CAP.","m":"Solgar","k":"1"},{"b":"033984035409","n":"SOLGAR VITAMIN E 400 IU 50 SOFT CAP.","m":"Solgar","k":"1"},{"b":"033984036031","n":"SOLGAR VITAMIN K2 100 MCG 50 CAP.","m":"Solgar","k":"1"},{"b":"033984036253","n":"Solgar VM-Prime™ 50+ 60 Tablet","m":"Solgar","k":"1"},{"b":"033984038189","n":"Solgar Chlorella 100 Kapsül","m":"Solgar","k":"1"},{"b":"033984038707","n":"SOLGAR Echinacea 100 Kapsül","m":"Solgar","k":"1"},{"b":"033984039377","n":"Solgar Hawthorne Berry 100 Kapsül","m":"Solgar","k":"1"},{"b":"033984039605","n":"Solgar Korean Ginseng 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984039711","n":"Solgar Milk Thistle 50 Kapsül","m":"Solgar","k":"1"},{"b":"033984040236","n":"SOLGAR SAW PALMETTO BERRIES 100 CAP.","m":"Solgar","k":"1"},{"b":"033984041066","n":"Solgar Astragalus Root Extract 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984041240","n":"Solgar Green Tea Leaf Extract 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984041318","n":"Solgar Ginkgo Biloba Leaf Extract 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984041394","n":"SOLGAR RHODIOLA ROOT EXTRACT 60 CAP.","m":"Solgar","k":"1"},{"b":"033984041462","n":"SOLGAR SIBERIAN GINSENG ROOT EXTRACT 60 CAP.","m":"Solgar","k":"1"},{"b":"033984041653","n":"Solgar Gotu Kola Aerial Extract 100 Kapsül","m":"Solgar","k":"1"},{"b":"033984307216","n":"Solgar L-Carnitine 1500 mg 473 ml Sıvı","m":"Solgar","k":"10"},{"b":"033984362185","n":"Solgar Artichoke Leaf Extract 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984504974","n":"SOLGAR NO.7 30 CAP.","m":"Solgar","k":"1"},{"b":"033984509795","n":"Solgar Balance Rhodiola Complex 60 Kapsül","m":"Solgar","k":"1"},{"b":"033984512856","n":"SOLGAR THERMOGENIC COMPLEX 60 CAP.","m":"Solgar","k":"1"},{"b":"033984595972","n":"Solgar Full Spectrum Curcumin 30 Kapsül","m":"Solgar","k":"1"},{"b":"033984781337","n":"Solgar Gentle Iron™ 17 mg 90 Kapsül","m":"Solgar","k":"1"},{"b":"0682607535118","n":"On Call Plus Şeker Ölçüm Cihazı","m":"On Call Plus","k":"10"},{"b":"074312003080","n":"Nature's Bounty Multi-Day with Green Tea Extract 50 Tablet","m":"Nature's Bounty","k":"1"},{"b":"074312020995","n":"Natures Bounty Coenzyme Q-10 200 mg 30 Jelatin Kapsül","m":"Nature's Bounty","k":"1"},{"b":"074312118470","n":"NATURES BOUNTY MILK THISTLE 175 MG 50 CAP.","m":"Nature's Bounty","k":"1"},{"b":"074312365515","n":"Natures Bounty St. Johns Wort 300 mg 100 Kapsül","m":"","k":"1"},{"b":"0842899100313","n":"Direct Nexus Alından ve Kulaktan Ateş Ölçer","m":"Direct Nexus","k":"10"},{"b":"0852869005517","n":"Dermatix Ultra Silicone Gel 15 gr","m":"Dermatix","k":"10"},{"b":"30166950","n":"La Roche Posay Lipikar Gel Lavant 100 ml","m":"La Roche Posay","k":"20"},{"b":"3282770075533","n":"Ducray Anaphase Plus Dökülme Karşıtı Şampuan 400 ml","m":"Ducray","k":"20"},{"b":"3282770139204","n":"Avene Cleanance Karma ve Yağlı Ciltler İçin Temizleme Jeli 200 ml","m":"Avene","k":"10"},{"b":"3282770140453","n":"Ducray Kelual Ds İnatçı Kepeğe Karşı Şampuan 100 ml","m":"Ducray","k":"20"},{"b":"3282770141382","n":"Ducray Keracnyl Yıkama Jeli 400 ml YENİ FORMÜL","m":"Ducray","k":"20"},{"b":"3282770146394","n":"Avene Cleanance Aqua Gel Matifiant 50 ml","m":"Avene","k":"20"},{"b":"3282770203493","n":"Avene Hydrance Aqua Gel Nemlendirici Krem 50 ml","m":"Avene","k":"20"},{"b":"3282770208214","n":"Avene A-Oxitive Yaşlanma Karşıtı Göz Çevresi Kremi 15 ml","m":"Avene","k":"20"},{"b":"3282770390445","n":"Avene Cleanance Detox Mask 50 ml","m":"Avene","k":"20"},{"b":"3282770390469","n":"Avene Cleanance AHA Exfoliating Serum 30 ml","m":"Avene","k":"20"},{"b":"3282779375955","n":"Avene Cleanance Gel 200 ml Tüp - Cleanance Comedomed 30 ml Set","m":"Avene","k":"20"},{"b":"3282779376013","n":"Avene Tolerance Hydra-10 Hydrating Cream 40 ml - Termal Su 50 ml","m":"Avene","k":"20"},{"b":"3337871310592","n":"Vichy Anti-Transpirant Terleme Karşıtı Deodorant 125ml","m":"Vichy","k":"20"},{"b":"3337871319144","n":"Vichy Purete Thermale 3-1 Arada Temizleyici 200ml","m":"Vichy","k":"20"},{"b":"3337871322243","n":"Vichy Dercos Energising Saç Dökülmesine Karşı Şampuan 400 ml","m":"Vichy","k":"20"},{"b":"3337871324599","n":"Vichy Terleme Karşıtı İz Bırakmayan Deodorant 50 ml","m":"Vichy","k":"20"},{"b":"3337871331290","n":"Vichy Dercos Neogenic Saç Yoğunlaştırıcı Şampuan 400 ml","m":"Vichy","k":"20"},{"b":"3337872411083","n":"La Roche Posay Effaclar Jel 200 ml","m":"La","k":"20"},{"b":"3337875537315","n":"La Roche Posay Lipikar Syndet AP+ Vücut Yıkama Jeli 400 ml","m":"La Roche Posay","k":"20"},{"b":"3337875546430","n":"La Roche Posay Toleriane Caring Wash Kuru Ve Hassas Ciltler İçin Yüz Temizleme Jeli 400 ml","m":"La Roche Posay","k":"20"},{"b":"3337875549530","n":"La Roche Posay Anthelios Parlama Karşıtı SPF50+ Güneş Koruyucu Mist 75ml","m":"La Roche Posay","k":"20"},{"b":"3337875597180","n":"CeraVe Nemlendiren Temizleyici 236 ml","m":"CeraVe","k":"20"},{"b":"3337875597227","n":"CeraVe Nemlendirici Krem 340 gr","m":"CeraVe","k":"20"},{"b":"3337875597371","n":"CeraVe Nemlendirici Krem 50 ml","m":"CeraVe","k":"20"},{"b":"3337875598071","n":"La Roche Posay Effaclar Duo + Krem 40 ml","m":"La Roche Posay","k":"20"},{"b":"3337875607261","n":"Vichy Liftactiv Collagen Specialist Yaşlanma Karşıtı Bakım Kremi 15 ml","m":"Vichy","k":"20"},{"b":"3337875613491","n":"La Roche Posay Effaclar K (+) Yüz Bakım Kremi 40 ml","m":"La Roche Posay","k":"20"},{"b":"3337875665582","n":"La Roche Posay Eau Termal Su Sprey 50 ml","m":"La","k":"20"},{"b":"3337875696548","n":"La Roche Posay Lipikar Baume AP+ M Balm 400 ml","m":"La Roche Posay","k":"20"},{"b":"3337875719209","n":"Vichy Liftactiv Kırışıklık Karşıtı Dolgunlaştırıcı Serum 30 ml","m":"Vichy","k":"20"},{"b":"3337875762298","n":"Vichy Capital Soleil UV Yaşlanma Karşıtı Güneş Kremi SPF 50 40 ml","m":"Vichy","k":"20"},{"b":"3337875782357","n":"CeraVe Nemlendirici Yüz Ve Vücut Kremi - Kuru Ciltler İçin Seramid Ve Hyalüronik Asit İçerikli 177 ml","m":"CeraVe","k":"20"},{"b":"3337875784054","n":"Cerave Yağlı ve Düzensiz Ciltler için Yıkama Jeli 236 ml","m":"CeraVe","k":"20"},{"b":"3337875794091","n":"La Roche Posay Effaclar Yağlı Ciltler Peeling 200 ml","m":"La Roche Posay","k":"20"},{"b":"3337875796583","n":"Vichy Liftactiv %16 Saf C Vitamini Serum 20 ml","m":"Vichy","k":"20"},{"b":"3337875797641","n":"La Roche Posay Anthelios UVmune400 Invisible Fluid Tüm Cilt Tipleri İçin Renkli SPF50+ Yüz Güneş Kremi 50 ml","m":"La Roche Posay","k":"20"},{"b":"3337875831888","n":"Vichy Mineral 89 Boosting Cream 50 ml","m":"Vichy","k":"20"},{"b":"3337875837149","n":"Vichy Capital Soleil UV-Clear Spf 50 Fluid Güneş Koruyucu 40 ml","m":"Vichy","k":"20"},{"b":"3337875837804","n":"La Roche Posay Cicaplast B5 Onarıcı Bakım Serumu 30 ml","m":"La Roche Posay","k":"20"},{"b":"3337875847087","n":"La Roche Posay Anthelios UVmune400 Oil Control Fluide SPF50+ Karma ve Yağlı İçin Renkli Yüz Güneş Kremi SPF50+ 50 ml","m":"La Roche Posay","k":"20"},{"b":"3337875863377","n":"La Roche Posay Effaclar Duo + M Krem 40 ml","m":"La Roche Posay","k":"20"},{"b":"3337875873048","n":"Vichy Mineral 89 Rich Moisture Boosting Cream 50 ml","m":"Vichy","k":"20"},{"b":"33984003101","n":"Solgar Biotin 1000 mcg 50 Kapsül Takviye Edici Gıda","m":"Solgar","k":"1"},{"b":"33984003132","n":"Solgar Biotin 5000 mcg 50 Kapsül Takviye Edici Gıda","m":"Solgar","k":"1"},{"b":"33984004009","n":"Solgar Beta Glukan 60 Kapsül","m":"Solgar","k":"1"},{"b":"33984004016","n":"Solgar Quercetin Complex 50 Kapsül","m":"Solgar","k":"1"},{"b":"33984004641","n":"Solgar Bromelain 60 Kapsül","m":"Solgar","k":"1"},{"b":"33984005181","n":"Solgar Calcium Magnesium with Vitamin D3 150 Tablet","m":"Solgar","k":"1"},{"b":"33984005204","n":"Solgar Calcium Magnesium Plus Zinc 100 Tablet","m":"Solgar","k":"1"},{"b":"33984008663","n":"Solgar Chromium Picolinate 200 mcg 90 Kapsül","m":"Solgar","k":"1"},{"b":"33984009479","n":"Solgar Cod Liver Oil 100 Kapsül","m":"Solgar","k":"1"},{"b":"33984009486","n":"Solgar Coenzyme Q-10 200 mg 30 Kapsül","m":"Solgar","k":"1"},{"b":"33984009554","n":"Solgar Cranberry With Vitamin C 60 Kapsül","m":"Solgar","k":"1"},{"b":"33984009561","n":"Solgar Coenzyme Q-10 60 mg 30 Kapsül","m":"Solgar","k":"1"},{"b":"33984010321","n":"Solgar Advanced Multi Formula 30 Kapsül","m":"Solgar","k":"1"},{"b":"33984010390","n":"Solgar Ester-C Plus 500 mg 100 Kapsül","m":"Solgar","k":"1"},{"b":"33984010802","n":"Solgar Evening Primrose Oil 1300 mg 30 Kapsül","m":"Solgar","k":"1"},{"b":"33984011212","n":"Solgar Vitamin B-Complex 50 - 100 Bitkisel Kapsül","m":"Solgar","k":"1"},{"b":"33984011861","n":"Solgar Formula VM-2000 Multivitamin ve Mineral 30 Tablet","m":"Solgar","k":"1"},{"b":"33984011878","n":"Solgar Formula VM-2000 Multivitamin ve Mineral 60 Tablet","m":"Solgar","k":"1"},{"b":"33984011885","n":"Solgar Formula VM-2000 Multivitamin ve Mineral 90 Tablet","m":"Solgar","k":"1"},{"b":"33984012875","n":"Solgar Glucosamine Chondroitin Complex 75 Tablet","m":"Solgar","k":"1"},{"b":"33984013186","n":"Solgar Glucosamin Kondroitin Msm 60 Tablet","m":"Solgar","k":"1"},{"b":"33984014176","n":"Solgar Grape Seed Extract 30 Kapsül","m":"Solgar","k":"1"},{"b":"33984015555","n":"Solgar Magnesium Glycinate 60 Kapsül Takviye Edici Gıda","m":"Solgar","k":"1"},{"b":"33984016132","n":"Day2Day The Collagen Mag Plus 45 Şase %50 Daha Fazla","m":"Solgar","k":"1"},{"b":"33984017108","n":"Solgar Magnesium Citrate 200 mg 60 Tablet","m":"Solgar","k":"1"},{"b":"33984017207","n":"Solgar Magnesium with Vitamin B6 100 Tablet","m":"Solgar","k":"1"},{"b":"33984017351","n":"Solgar Formula Skin & Nails & Hair 60 Tablet","m":"Solgar","k":"1"},{"b":"33984017603","n":"Solgar Fish Oil 1000 mg 60 Kapsül","m":"Solgar","k":"1"},{"b":"33984019409","n":"Solgar Folate (Metafolin) 400 mcg 50 Tablet","m":"Solgar","k":"1"},{"b":"33984020276","n":"Solgar Methylcobalamin (B12) 1000 mcg 30 Dilaltı Tablet","m":"Solgar","k":"1"},{"b":"33984020306","n":"Solgar Beta Carotene 7 mg 60 Softjel Kapsül","m":"Solgar","k":"1"},{"b":"33984020573","n":"Solgar Omega 3 950 mg 50 Yumuşak Jelatinli Kapsül","m":"Solgar","k":"1"},{"b":"33984023154","n":"Solgar Psyllium Husks Fibre 200 Kapsül","m":"Solgar","k":"1"},{"b":"33984023802","n":"Solgar Vitamin C 500 mg with Rose Hips 100 Tablet","m":"Solgar","k":"1"},{"b":"33984025516","n":"Solgar Selenium 100 mcg 100 Tablet","m":"Solgar","k":"1"},{"b":"33984028043","n":"Solgar Kangavites Vitamin C 100 mg 90 Tablet","m":"Solgar","k":"1"},{"b":"33984032293","n":"Solgar Vitamin B12 500 mcg 50 Kapsül","m":"Solgar","k":"1"},{"b":"33984033405","n":"Solgar Vitamin D3 1000 Iu 25 Mcg 100 Yumuşak Kapsül","m":"Solgar","k":"1"},{"b":"33984035058","n":"Solgar Vitamin E 200 IU 134 Mg 50 Kapsül","m":"Solgar","k":"1"},{"b":"33984035409","n":"Solgar Vitamin E 400 IU 50 Yumuşak Jelatin Kapsül","m":"Solgar","k":"1"},{"b":"33984040236","n":"Solgar Saw Palmetto Berries 100 Kapsül","m":"Solgar","k":"1"},{"b":"33984781337","n":"Solgar Gentle Iron 17 mg 90 Kapsül","m":"Solgar","k":"1"},{"b":"3401360145207","n":"Bioderma Sebium Global Cover 30ml","m":"Bioderma","k":"20"},{"b":"3401381682361","n":"Bioderma Sebium H2O Yüz ve Makyaj Temizleme Suyu 2 x 500 ml","m":"Bioderma","k":"20"},{"b":"3401399277092","n":"Bioderma Sebium Foaming Cilt Temizleme Jeli 500 ml","m":"Bioderma","k":"20"},{"b":"3401574131423","n":"Bioderma Sebium Exfoliating Gel 100ml Nemlendirci ve Temizleyici","m":"Bioderma","k":"20"},{"b":"3433422405912","n":"La Roche Posay Toleriane Foaming Temizleyici Jel 150 ml","m":"La Roche Posay","k":"20"},{"b":"3433422408159","n":"La Roche Posay Toleriane Dermo Makyaj Temizleyici 200 ml","m":"La Roche Posay","k":"20"},{"b":"3522930003038","n":"Caudalie Hassas Temizleyici Peeling 75 ml","m":"Caudalie","k":"20"},{"b":"3522930003090","n":"Caudalie Vinoclean Misel Temizleme Suyu 200 ml","m":"Caudalie","k":"20"},{"b":"3522930003144","n":"Caudalie Vinoclean Nemlendirici Tonik 100 ml","m":"Caudalie","k":"20"},{"b":"3522930003151","n":"Caudalie Vinoclean Nemlendirici Tonik 200 ml","m":"Caudalie","k":"20"},{"b":"3522930003168","n":"Caudalie Vinoclean Nemlendirici Tonik 400 ml","m":"Caudalie","k":"20"},{"b":"3522930003175","n":"Caudalie Vinoclean Makyaj Temizleme Yağı 150 ml","m":"Caudalie","k":"20"},{"b":"3522930003182","n":"Caudalie Beauty Elixir Güzellik İksiri 30 ml","m":"Caudalie","k":"20"},{"b":"3522930003199","n":"Caudalie Beauty Elixir Güzellik İksiri 100 ml","m":"Caudalie","k":"20"},{"b":"3522930003212","n":"Caudalie Organik Üzüm Suyu 200 ml","m":"Caudalie","k":"20"},{"b":"3522930003236","n":"Caudalie Vinoperfect Leke Karşıtı Glikolik Gece Bakım Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522930003281","n":"Caudalie Vinoperfect Leke Karşıtı ve Işıltı Verici Glikolik Maske 75 ml","m":"Caudalie","k":"20"},{"b":"3522930003298","n":"Caudalie Vinoperfect Brightening Eye Cream 15 ml","m":"Caudalie","k":"20"},{"b":"3522930003304","n":"Caudalie Vinofresh Doğal Stick Deodorant 50 gr","m":"Caudalie","k":"20"},{"b":"3522930003380","n":"Caudalie Vinosource-Hydra Nemlendirici Maske 75 ml","m":"Caudalie","k":"20"},{"b":"3522930003441","n":"Caudalie Vinopure Temizleyici Tonik 200 ml","m":"Caudalie","k":"20"},{"b":"3522930003458","n":"Caudalie Vinopure Matlaştırıcı Fluid Krem 40 ml","m":"Caudalie","k":"20"},{"b":"3522930003465","n":"Caudalie Vinopure Arındırıcı Temizleme Jeli 150 ml","m":"Caudalie","k":"20"},{"b":"3522930003472","n":"Caudalie Vinopure Purifying Mask 75 ml","m":"Caudalie","k":"20"},{"b":"3522930003489","n":"Caudalie Vinergetic C+ Vitamin C Energy Serum 30 ml","m":"Caudalie","k":"20"},{"b":"3522930003502","n":"Caudalie Vinoperfect Leke Karşıtı El Bakım Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522930003755","n":"Caudalie Vinosun Protect Spf 30 Güneş Koruyucu Krem 50 ml","m":"Caudalie","k":"20"},{"b":"3522930003809","n":"Caudalie Vinosun Protect Güneş Sonrası Losyon 400 ml","m":"Caudalie","k":"20"},{"b":"3522930004011","n":"Caudalie Vinoperfect Leke Karşıtı ve Işıltı Verici Glikolik Esans 100 mL","m":"Caudalie","k":"20"},{"b":"3522930004028","n":"Caudalie Vinosun Protect Spf 50 Güneş Suyu 150 ml","m":"Caudalie","k":"20"},{"b":"3522930004042","n":"Caudalie Güneşsiz Bronzlaştırıcı Damla 15 ml","m":"Caudalie","k":"20"},{"b":"3522930004066","n":"Caudalie Vinopure Arındırıcı Temizleme Jeli 385 ml","m":"Caudalie","k":"20"},{"b":"3522930004073","n":"Caudalie Vinopure Düzensiz Ciltler İçin Salisilik Krem 15 ml","m":"Caudalie","k":"20"},{"b":"3522930004158","n":"Caudalie Yoğun Arındırıcı Peeling 75 ml","m":"Caudalie","k":"20"},{"b":"3522930004165","n":"Caudalie Soleil des Vignes Oil Elixir 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004240","n":"Caudalie Resveratrol Lift Sıkılaştırıcı Serum 30 ml","m":"Caudalie","k":"20"},{"b":"3522930004264","n":"Caudalie Resveratrol-Lift Sıkılaştırıcı Gece Bakım Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004271","n":"Caudalie Resveratrol-Lift Yeniden Yoğunlaştırıcı Kaşmir Krem 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004288","n":"Caudalie Resveratrol-lift Gündüz Bakım Kremi - Yedek Kapsül 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004301","n":"Caudalie Vinosun Protect SPF50+ Yüksek Korumalı Stick 15 gr","m":"Caudalie","k":"20"},{"b":"3522930004318","n":"Caudalie Vinoperfect Işıltı Verici Mikro Peeling Temizleme Köpüğü 100 ml","m":"Caudalie","k":"20"},{"b":"3522930004325","n":"Caudalie Vinoperfect Leke Karşıtı ve Işıltı Verici Serum 30 ml","m":"Caudalie","k":"20"},{"b":"3522930004349","n":"Caudalie Instant Detox Mask 75 ml","m":"Caudalie","k":"20"},{"b":"3522930004356","n":"Caudalie VinoHydra Yoğun Nemlendirici Bakım Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004363","n":"Caudalie VinoHydra Sos Thirst Nem Serumu 30 ml","m":"Caudalie","k":"20"},{"b":"3522930004370","n":"Caudalie VinoHydra Nemlendirici Maske 75 ml","m":"Caudalie","k":"20"},{"b":"3522930004387","n":"Caudalie VinoHydra Nemlendirici Bakım Kremi 60 ml","m":"Caudalie","k":"20"},{"b":"3522930004394","n":"Caudalie VinoHydra Nemlendirici Jel 60ml","m":"Caudalie","k":"20"},{"b":"3522930004400","n":"Caudalie VinoHydra Yoğun Nemlendirici Bakım Kremi 60 ml","m":"Caudalie","k":"20"},{"b":"3522930004431","n":"Caudalie Moisturizing Oil Elixir 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004486","n":"Caudalie Instant Detox Mask 35 ml","m":"Caudalie","k":"20"},{"b":"3522930004493","n":"Caudalie Vinoperfect Leke Karşıtı ve Işıltı Verici Serum 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004516","n":"Caudalie Resveratrol Lift Firming Serum Refill 30 ml","m":"Caudalie","k":"1"},{"b":"3522930004523","n":"Caudalie Resveratrol Lift Lightweight Gündüz Bakım Kremi 40 ml","m":"Caudalie","k":"20"},{"b":"3522930004547","n":"Caudalie Vinopure Arındırıcı Temizleme Jeli 75 ml","m":"Caudalie","k":"1"},{"b":"3522930004561","n":"Caudalie Premier Cru Yaşlanma Karşıtı Serum 30ml","m":"Caudalie","k":"20"},{"b":"3522930004592","n":"Caudalie Premier Cru Gündüz Bakım Kremi 50 ml - Kuru Ciltler","m":"Caudalie","k":"20"},{"b":"3522930004615","n":"Caudalie Vinoperfect Dark Spot Niacinamide Moisturizer 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004622","n":"Caudalie Vinoperfect Leke Karşıtı Glikolik Gece Bakım Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522930004639","n":"Caudalie Vinoperfect Leke Karşıtı El Bakım Kremi 50 mL","m":"Caudalie","k":"20"},{"b":"3522930004646","n":"Caudalie Vinoperfect Dark Spot Moisturizer Refill 50 mL","m":"Caudalie","k":"20"},{"b":"3522930004653","n":"Caudalie Vinoperfect Dark Spot Night Cream Refill 50 mL","m":"Caudalie","k":"20"},{"b":"3522930004660","n":"Caudalie Vinoperfect Işıltı Verici Mikro Peeling Köpük 50 ml","m":"Caudalie","k":"20"},{"b":"3522930005001","n":"Caudalie Vinopure Akne Karşıtı Salisilik Serum 30 ml","m":"Caudalie","k":"20"},{"b":"3522930005025","n":"Caudalie Vinopure Akne Karşıtı Salisilik Spot Krem 15 ml","m":"Caudalie","k":"20"},{"b":"3522930005049","n":"Caudalie Vinopure Akne Karşıtı Arındırıcı Tonik 400 ml","m":"Caudalie","k":"20"},{"b":"3522930005063","n":"Caudalie Vinopure Arındırıcı Temizleme Jeli 385 ml","m":"Caudalie","k":"20"},{"b":"3522930005070","n":"Caudalie Vinopure Arındırıcı Temizleme Jeli 75 ml","m":"Caudalie","k":"20"},{"b":"3522930005117","n":"Caudalie Kış Çantası Winter Moisture Kit","m":"Caudalie","k":"20"},{"b":"3522930005124","n":"Caudalie Resveratrol Lift Firming Cream 50 ml + Serum Set","m":"Caudalie","k":"1"},{"b":"3522930005278","n":"Caudalie Vinopure Starter Kit Anti Imperfections","m":"Caudalie","k":"20"},{"b":"3522930005339","n":"Caudalie Vinosun Very High Protection Fluid SPF50+ 40 mL","m":"Caudalie","k":"20"},{"b":"3522930005346","n":"Caudalie Vinosun Very High Protection Cream SPF50+ 50 mL","m":"Caudalie","k":"20"},{"b":"3522930005353","n":"Caudalie Vinosun Very High Protection Sun Water SPF50+ 150 mL","m":"Caudalie","k":"20"},{"b":"3522930005360","n":"Caudalie Vinosun Invisible High Protection Spray SPF30 150 mL","m":"Caudalie","k":"20"},{"b":"3522930005377","n":"Caudalie Vinosun Very High Protection Sun Water SPF50+ 150 mL","m":"Caudalie","k":"20"},{"b":"3522930005384","n":"Caudalie Vinosun High Protection Glow Oil SPF50 150 mL","m":"Caudalie","k":"20"},{"b":"3522930005391","n":"Caudalie Vinosun Invisible High Protection Stick SPF50 15 G","m":"Caudalie","k":"20"},{"b":"3522930005407","n":"Caudalie After-Sun Repairing Lotion 200 mL","m":"Caudalie","k":"20"},{"b":"3522930005414","n":"Caudalie After-Sun Repairing Lotion 400 mL","m":"Caudalie","k":"20"},{"b":"3522930005506","n":"Caudalie Resveratrol-Lift Vücut Bakım Kremi 200 ml","m":"Caudalie","k":"20"},{"b":"3522930005704","n":"Caudalie Resveratrol Lift Sıkılaştırıcı Serum 30 ml","m":"Caudalie","k":"20"},{"b":"3522930005728","n":"Caudalie Resveratrol-Lift Gece Bakım Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522930005742","n":"Caudalie Resveratrol-Lift Gündüz Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522930005773","n":"Caudalie Resveratrol Lift Göz Çevresi Krem Jel 15 ml","m":"Caudalie","k":"20"},{"b":"3522930005780","n":"Caudalie Vinopure Serum 30 ml Vinopure Gel 150 ml Hediyeli","m":"Caudalie","k":"20"},{"b":"3522930005797","n":"Caudalie Vinoperfect Serum & Suncare Set 2026","m":"Caudalie","k":"20"},{"b":"3522930005803","n":"Caudalie Dolgunluk ve Hacim Veren Şampuan 200ml","m":"Caudalie","k":"20"},{"b":"3522930005810","n":"Caudalie Saç Dökülmesine Karşı Serum 50ml","m":"Caudalie","k":"20"},{"b":"3522930005827","n":"Caudalie Yaz Çantası Seyahat Seti Summer Pouch 2026","m":"Caudalie","k":"20"},{"b":"3522930005834","n":"Caudalie Vinopure Tanışma Kiti Anti Imperfections","m":"Caudalie","k":"20"},{"b":"3522930005872","n":"Caudalie Winter Pouch 2026","m":"Caudalie","k":"20"},{"b":"3522930027812","n":"Caudalie Resveratrol Lift Göz Çevresi Krem Jel 15 ml","m":"Caudalie","k":"20"},{"b":"3522930028406","n":"Caudalie Vinotherapist Vegan Vücut Bakım Seti","m":"Caudalie","k":"20"},{"b":"3522930028550","n":"Caudalie Soleil des Vignes Oil Elixir Set","m":"Caudalie","k":"20"},{"b":"3522930028567","n":"Caudalie Light Fragrance Ange des Vignes Set","m":"Caudalie","k":"20"},{"b":"3522931003228","n":"Caudalie Vinoperfect Dark Spot Leke Karşıtı Gündüz Bakım Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522931003730","n":"Caudalie Yoğun Arındırıcı Peeling Vinoclean 75 ml","m":"Caudalie","k":"20"},{"b":"3522931003747","n":"Caudalie Vinosun Protect Spf 50+ Güneş Kremi 50 ml","m":"Caudalie","k":"20"},{"b":"3522931003778","n":"Caudalie Vinosun Protect Spf 30 Güneş Spreyi 150 ml","m":"Caudalie","k":"20"},{"b":"3522931005017","n":"Caudalie Vinopure Matlaştırıcı Fluid Krem 60 ml","m":"Caudalie","k":"20"},{"b":"3522931005031","n":"Caudalie Vinopure Akne Karşıtı Arındırıcı Tonik 200 ml","m":"Caudalie","k":"20"},{"b":"3522931005055","n":"Caudalie Vinopure Arındırıcı Temizleme Jeli 150 ml","m":"Caudalie","k":"20"},{"b":"3522932005351","n":"Caudalie Vinosun Invisible High Protection Spray SPF50 75 mL","m":"Caudalie","k":"20"},{"b":"3522932028114","n":"Caudalie Vinosun Protect Güneş Sonrası Losyon 200 ml","m":"Caudalie","k":"20"},{"b":"3522932028145","n":"Caudalie Rose De Vignes Üçlü Bakım Seti","m":"Caudalie","k":"20"},{"b":"3522932028459","n":"Caudalie Premier Cru Set","m":"Caudalie","k":"20"},{"b":"3522934005335","n":"Caudalie Vinosun Very High Protection Fluid SPF50+ 20 mL","m":"Caudalie","k":"20"},{"b":"3522938028163","n":"Caudalie Besleyici El ve Tırnak Kremi Üçlü Set","m":"Caudalie","k":"20"},{"b":"3574661627007","n":"O B TAMPON MINI COMFORT","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"3606000560833","n":"CeraVe Nemlendiren Hyalüronik Asit Serum 30 ml","m":"CeraVe","k":"20"},{"b":"3612622680279","n":"La Roche Posay Posthelios After Sun 100ml","m":"La Roche Posay","k":"20"},{"b":"3662042009204","n":"Thea Thealoz Duo Jel 30 Flakon","m":"Thea","k":"10"},{"b":"3701129800072","n":"Bioderma Pigmentbio Daily Care SPF 50+ 40 ml","m":"Bioderma","k":"20"},{"b":"3701129800096","n":"Bioderma Pigmentbio Hassas Bölge Aydınlatıcı Krem 75 ml","m":"Bioderma","k":"20"},{"b":"3701129800546","n":"Bioderma Pigmentbio C-Concentrate 15 ml","m":"Bioderma","k":"20"},{"b":"3701129800553","n":"Bioderma Pigmentbio Foaming Cream 500 ml","m":"Bioderma","k":"20"},{"b":"3701129802069","n":"Bioderma Atoderm Intensive Balm 200 ml","m":"Bioderma","k":"20"},{"b":"3701129802076","n":"Bioderma Atoderm Intensive Baume 500 ml","m":"Bioderma","k":"20"},{"b":"3701129804049","n":"Bioderma Sensibio AR BB Cream Spf30 (Light) 40ml","m":"Bioderma","k":"20"},{"b":"3701129805343","n":"Bioderma Atoderm Krem Ultra 500 ml","m":"Bioderma","k":"20"},{"b":"3701129805367","n":"Bioderma Sebium Kerato Nemlendirici Jel Krem 30 ml","m":"Bioderma","k":"20"},{"b":"3701129807729","n":"Bioderma Sensibio DS+ Foaming Cilt Temizleme Jeli 200 ml","m":"Bioderma","k":"20"},{"b":"3701129807934","n":"Bioderma Atoderm 2-in-1 Body Oil 150 ml","m":"Bioderma","k":"20"},{"b":"3701129810088","n":"Bioderma Cicabio Spf50+ Cream 40 ml","m":"Bioderma","k":"20"},{"b":"3701129812488","n":"Bioderma Sensibio AR+ Micellar Gel 250 ml","m":"Bioderma","k":"20"},{"b":"4015630066933","n":"Accu Chek Instant Strip 50 Ölçüm Çubuğu","m":"Accu Chek","k":"10"},{"b":"4030571004660","n":"ARTELAC COMPLETE","m":"Bausch Lomb","k":"10"},{"b":"4030571008187","n":"Artelac Advanced Göz Damlası  30x0.5 ml","m":"Bausch Lomb","k":"10"},{"b":"4250108306726","n":"ACTOLIND W YARA YANIK SOLUSYONU 100 ML","m":"","k":"10"},{"b":"4250108306733","n":"ACTOLIND W YARA YANIK SOL 250 ML","m":"","k":"10"},{"b":"4250108306757","n":"ACTOLIND W YARA YANIK SOLUSYON 500 ML","m":"","k":"10"},{"b":"4250108306788","n":"ACTOLIND W YARA YANIK SOLUSYON 50 ML","m":"","k":"10"},{"b":"4250108306849","n":"ACTOLIND W GEL YARA YANIK JELI 50 ML","m":"","k":"10"},{"b":"4250108306856","n":"ACTOLIND W GEL YARA YANIK JELI 30 ML","m":"","k":"10"},{"b":"5391520941399","n":"Paranit Baş Biti Kovucu Sprey 100 ml Yağsız","m":"Paranit","k":"20"},{"b":"5702071400578","n":"Möllers Omega-3 60 Yumuşak Kapsül","m":"Möller's","k":"1"},{"b":"5900741964256","n":"Artelac Ultra 4S Göz Damlası 10 ml","m":"Bausch Lomb","k":"10"},{"b":"682607535118","n":"On Call Plus Şeker Ölçüm Cihazı","m":"On Call Plus","k":"10"},{"b":"682607535217","n":"On Call Plus Şeker Ölçüm Çubuğu 50 Adet","m":"On Call Plus","k":"10"},{"b":"6934175071463","n":"Bioject Safe AQ Angel Kan Şekeri Ölçüm Cihazı","m":"Bioject","k":"10"},{"b":"6972524540222","n":"Direct Nexus Otomatik Burun Aspiratörü","m":"Direct Nexus","k":"20"},{"b":"6976409251128","n":"Direct Nexus Taşınabilir Mesh Nebulizatör","m":"Direct Nexus","k":"10"},{"b":"7070866013288","n":"Möller's Omega-3 Balık Yağı Sıvı Formu 250 ml - Tutti Frutti","m":"Möller's","k":"1"},{"b":"7070866027766","n":"Möller's Omega 3 Takviye Edici Gıda Limon Aromalı 250 ml","m":"Möller's","k":"1"},{"b":"7070866029371","n":"Möller's Omega 3 Takviye Edici Gıda Elma Aromalı 250 ml","m":"Möller's","k":"1"},{"b":"7070866040703","n":"Möller's Omega-3 Balık Yağı Sıvı Formu 150 ml - Elmalı","m":"Möller's","k":"1"},{"b":"7070866040734","n":"Möller's Omega-3 Balık Yağı Sıvı Formu 150 ml - Tutti Frutti","m":"Möller's","k":"1"},{"b":"7070866042080","n":"Möller's Omega-3 Balık Yağı Sıvı Formu 150 ml - Limonlu","m":"Möller's","k":"20"},{"b":"7391899237121","n":"BIOTRUE 300 ML","m":"Bausch Lomb","k":"20"},{"b":"7391899856131","n":"BIOTRUE 100 ML","m":"Bausch Lomb","k":"1"},{"b":"74312005312","n":"Nature's Bounty Biotin 5000 mcg 72 Kapsül","m":"Nature's Bounty","k":"1"},{"b":"810071800382","n":"BREATHE RIGHT EXTRA NORMAL","m":"Breathe Right","k":"10"},{"b":"810071800399","n":"Breathe Right Orijinal Burun Bandı 10 Adet","m":"Breathe Right","k":"10"},{"b":"810071800405","n":"BREATHE RIGHT BRN SEFFAF NORML","m":"Breathe Right","k":"10"},{"b":"810071801020","n":"BREATHE RIGHT BURUN BANDI BUYUK 10 ADET","m":"Breathe Right","k":"10"},{"b":"811131030329","n":"Beaver Ultra Moisture Conditioner 258 ml","m":"Beaver","k":"20"},{"b":"811131034860","n":"Beaver Coconut Oil Mask 250 ml","m":"Beaver","k":"20"},{"b":"811131035508","n":"Beaver Brazilian Keratin Smoothing Conditioner 350 ml","m":"Beaver","k":"20"},{"b":"85006959203","n":"Orzax Ocean Mood 30 Kapsül Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"850069594817","n":"Orzax Ocean ExtraMag 60 Tablet Üçlü Magnezyum Kombinasyonu","m":"Orzax","k":"1"},{"b":"850069595203","n":"Orzax Ocean Mood 30 Kapsül","m":"Orzax","k":"1"},{"b":"850071852933","n":"Orzax Ocean Vitamin C 30+30 Tablet Avantaj Paket","m":"Orzax","k":"1"},{"b":"850071952636","n":"Orzax Ocean Neurobexol 60 Kapsül Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"850071952650","n":"Orzax Ocean Ultimate Balık Yağı 1700 mg 30 Softjel Kapsül","m":"Orzax","k":"1"},{"b":"850071952674","n":"Orzax Ocean Formera 30 Tüp 60 Kapsül","m":"Orzax","k":""},{"b":"850071952858","n":"Orzax İmunol Complex 30+15 Kapsül Avantajlı Paket","m":"Orzax","k":"1"},{"b":"850071952865","n":"Orzax Ocean Glukozamin Kompleks 60+60 Tablet Avantaj Paket","m":"Orzax","k":"1"},{"b":"850071952865-T","n":"Orzax Ocean Glukozamin Kompleks 60 Tablet (Tekli)","m":"Orzax","k":"1"},{"b":"850071952865-T1","n":"Orzax Ocean Glukozamin Kompleks 60 Tablet (Tekli)","m":"Orzax","k":"1"},{"b":"850071952872","n":"Caudalie Vinopure Arındırıcı Temizleme Jeli 385 ml","m":"Orzax","k":"20"},{"b":"850071952889","n":"Orzax Ocean Cogniven 40 Kapsül %33 Daha Fazla","m":"Orzax","k":"1"},{"b":"850071952902","n":"Orzax Ocean Multi Şurup 150+150 ml 1 Alana 1 Bedava","m":"Orzax","k":"1"},{"b":"850071952933","n":"Orzax Ocean Vitamin C 30+30 Tablet Avantaj Paket","m":"Orzax","k":"1"},{"b":"850071952940","n":"Orzax Ocean Çörek Otu Yağı  60+60 Kapsül 1 Alana 1 Bedava","m":"Orzax","k":"1"},{"b":"850071952964","n":"Orzax Ocean Gummies Multivitamin Kids 60+60 Adet","m":"Orzax","k":"1"},{"b":"850071952995","n":"Orzax Ocean B Complex 60 Kapsül Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"850077028045","n":"Dr. Thomson Bewity Şurup 100 ml Boya Kalemi Seti Hediyeli","m":"Dr. Thomson","k":"1"},{"b":"850077028090","n":"Orzax Ocean Daily One Energy 30 Tablet Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"850077028120","n":"Orzax Ocean Krill Oil 30+15 Kapsül %50 Daha Fazla","m":"Orzax","k":"1"},{"b":"850077028403","n":"Orzax Ocean Bromelain Complex 60 Tablet Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"850077028489","n":"Orzax Ocean Methyl B12 500 mcg 5 ml Methylcobalamin","m":"Orzax","k":"1"},{"b":"850077028496","n":"Orzax Ocean Methyl B12 1000 mcg 5 ml Methylcobalamin","m":"Orzax","k":"1"},{"b":"850077028502","n":"Orzax Ocean Methyl B12 1000 mcg 10 ml Methylcobalamin","m":"Orzax","k":"1"},{"b":"850077028519","n":"Orzax Ocean Vitamin D3 400 IU Sprey 20ml","m":"Orzax","k":"1"},{"b":"850077028526","n":"Orzax Ocean Vitamin D3 600 IU Sprey 20ml","m":"Orzax","k":"1"},{"b":"850077028557","n":"Orzax Ocean D3K2 Vitamin Damla 20 ml","m":"Orzax","k":"1"},{"b":"850077028571","n":"Orzax Ocean Polysitol 30 Saşe","m":"Orzax","k":"1"},{"b":"850077028618","n":"Orzax Proceive F 30 Saşe","m":"Orzax","k":"1"},{"b":"850077028670","n":"Day2Day The Collagen Beauty Plus 40 ml x 30 Adet","m":"Day2Day","k":"1"},{"b":"850077028694","n":"OCEAN YILBASI KOFRE 4 GUM MULTI + SAMB KIDS","m":"","k":"1"},{"b":"850077028915","n":"Day2Day The Collagen Mag Plus 30 Saşe","m":"Day2Day","k":"1"},{"b":"850081345022","n":"Orzax Ocean Vitamin D3 1000 IU Oral Sprey 30 ml %50","m":"Orzax","k":"1"},{"b":"850081345039","n":"Orzax Cosakondrin Plus 90 Tablet - Aynı Fiyat %50 Daha Fazla","m":"Orzax","k":"1"},{"b":"850081345046","n":"Orzax Ocean D3K2 2.'si %50 İndirimli 20+20 ml","m":"Orzax","k":"1"},{"b":"850081345053","n":"Orzax Ocean Colflex 30 Saşe","m":"Orzax","k":"1"},{"b":"850081345060","n":"Orzax Ocean ExtraMag 90 Tablet Üçlü Magnezyum Kombinasyonu","m":"Orzax","k":"1"},{"b":"850081345091","n":"Orzax Ocean Daily One Energy 30 + 30 Tablet 1+1 Hediyeli","m":"Orzax","k":"1"},{"b":"850081345107","n":"Day2Day The Collagen Mag Plus 30 Saşe %50 Daha Fazla","m":"Day2Day","k":"1"},{"b":"850081345145","n":"Orzax Ocean Methyl Folat 30 Tablet","m":"Orzax","k":"1"},{"b":"850081345183","n":"Orzax Ocean Plus 1200 mg Omega 3 Balık Yağı 50 Kapsül","m":"Orzax","k":"1"},{"b":"850081345190","n":"Orzax Ocean Plus 50+50 Softjel Kapsül 1 Alana 1 Hediye","m":"Orzax","k":"1"},{"b":"850081345213","n":"Orzax Ocean Ultimate Balık Yağı 1700 mg 30+9 Softjel Kapsül","m":"Orzax","k":"1"},{"b":"850081345275","n":"Orzax Ocean Gummies Multivitamin Kids 120 Adet Avantaj Paket","m":"Orzax","k":"1"},{"b":"850081345282","n":"Orzax Ocean Vm Arginin Ps Şurup 150 ml %25 İndirimli","m":"Orzax","k":"1"},{"b":"850081345534","n":"Orzax Ocean Cranberry Turna Yemişi 30 Kapsül","m":"Orzax","k":"1"},{"b":"850081345541","n":"Orzax Ocean Magnezyum Complex 60 Tablet","m":"Orzax","k":"1"},{"b":"850081345589","n":"Orzax İmunol 40 Kapsül","m":"Orzax","k":"20"},{"b":"850081345596","n":"Orzax İmunol Complex 30 Kapsül","m":"Orzax","k":"20"},{"b":"85008135406","n":"Orzax Ocean D3K2 2.'si %50 İndirimli 20+20 ml","m":"Orzax","k":"1"},{"b":"850084388026","n":"Orzax Ocean Koenzim Q10 100 mg 30 Kapsül","m":"Orzax","k":"1"},{"b":"850084388033","n":"Orzax Ocean Koenzim Q10 200 mg 30 Kapsül","m":"Orzax","k":"1"},{"b":"850084388095","n":"Orzax Ocean Enzymes Pancron 60 Kapsül Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"850084388132","n":"Orzax Ocean Mummy 60 Softjel Kapsül","m":"Orzax","k":"1"},{"b":"850084388279","n":"Day2Day The Collagen Beauty Core 30 Tablet","m":"Day2Day","k":"1"},{"b":"850084388392","n":"Orzax Ocean Methyl Folat 90 Tablet","m":"Orzax","k":"1"},{"b":"850084388989","n":"Orzax Ocean Magnezyum Complex 60 Tablet 2.si %50 İndirimli","m":"Orzax","k":"1"},{"b":"850089227085","n":"Orzax İmunol Şurup 150 ml","m":"Orzax","k":"1"},{"b":"852869005517","n":"Dermatix Ultra Silcone Gel 15 gr","m":"Dermatix","k":"10"},{"b":"857651007182","n":"Beaver Argan Oil Of Moroccco Şampuan 350 ml","m":"Beaver","k":"20"},{"b":"857651007212","n":"Beaver Marula Oil Şampuan 350 ml","m":"Beaver","k":"20"},{"b":"857651007250","n":"Beaver Coconut Oil Quinoa Moisturizing Şampuan 350 ml","m":"Beaver","k":"20"},{"b":"857651007267","n":"Beaver Coconut Oil Milk Moisturizing Saç Bakım Kremi 350 ml","m":"Beaver","k":"20"},{"b":"857651007298","n":"Beaver Cherry Blossom Şampuan 350 ml","m":"Beaver","k":"20"},{"b":"857651007342","n":"Beaver Tea Tree Saç Bakım Kremi 350 ml","m":"Beaver","k":"20"},{"b":"857651007397","n":"Beaver Argan Oil Of Morocco Şampuan 60 ml","m":"Beaver","k":"20"},{"b":"857651007465","n":"Beaver Tea Tree Saç Bakım Kremi 40 ml","m":"Beaver","k":"20"},{"b":"857651007472","n":"Beaver Marula Oil Saç Bakım Maskesi 250 ml","m":"Beaver","k":"20"},{"b":"857651007496","n":"Beaver Marula Oil Silky Hair Oil 100 ml","m":"Beaver","k":"20"},{"b":"857651007557","n":"Beaver Cherry Blossom Body Wash 400 ml","m":"Beaver","k":"20"},{"b":"8602853643568","n":"Vichy Liftactiv A+ Retinol Specialist Derin Kırışıklık Karşıtı Serum 30ml","m":"Vichy","k":"20"},{"b":"8602853651914","n":"CeraVe Nemlendiren Temizleyici 236ml","m":"CeraVe","k":"20"},{"b":"8602853651916","n":"CeraVe Köpüren Temizleyici 236ml","m":"CeraVe","k":"20"},{"b":"8680057351687","n":"Sorvagen Smart Sitikolin DHA Omega 3 ve B12 30 Kapsül","m":"Sorvagen","k":"1"},{"b":"8680057351793","n":"Sorvagen Smart Sıvı Form Stikolin Takviye Edici Gıda 150 ml","m":"Sorvagen","k":"1"},{"b":"8680131752652","n":"Venatura L-Glutatyon 250 mg 30 Kapsül","m":"VeNatura","k":"1"},{"b":"8680131757640","n":"VENATURA L-GLUTAMIN 30 SASE","m":"VeNatura","k":"1"},{"b":"8680131757671","n":"Venatura Çinko Asetat 30 Pastil","m":"Venatura","k":"1"},{"b":"8680131757817","n":"VeNatura Pelarim Afrika Sardunyası 20 ml","m":"VeNatura","k":"1"},{"b":"8680131757824","n":"VENATURA TIP II ENZIMATIK HIDROLIZE KOLLAGEN 30 SASE","m":"VeNatura","k":"1"},{"b":"8680131757930","n":"VENATURA SAMBU-C 150 ML","m":"VeNatura","k":"1"},{"b":"8680131758258","n":"Venatura Vitamin C Serum + Hyaluronic Acid 30 ml","m":"VeNatura","k":"20"},{"b":"8680131758593","n":"Venatura R-Ala Plus 30 Kapsül","m":"VeNatura","k":"1"},{"b":"8680131758692","n":"Venatura Beta Glukan 30 Kapsül","m":"Venatura","k":"1"},{"b":"8680131758708","n":"VENATURA PREM KIDS OMEGA3 150ML","m":"VeNatura","k":"1"},{"b":"8680131758746","n":"Venatura Hayıt Meyve Ekstresi P5P Vitamin B6 60 Tablet","m":"VeNatura","k":"1"},{"b":"8680131759194","n":"Venatura Methyl Plus 30 Saşe","m":"VeNatura","k":"1"},{"b":"8680131759323","n":"VENATURA TIP 1 HIDROLIZE BALIK KOLAJENI 30 SASE","m":"Venatura","k":"1"},{"b":"8680131759620","n":"Venatura Kids Mikroenkapsüle Demir ve Vitamin C 20 ml","m":"VeNatura","k":"1"},{"b":"8680133000669","n":"Sterimar Baby Blocked Nose Burun Spreyi 50 ml","m":"Tab İlaç","k":"10"},{"b":"8680145080062","n":"The Purest Solutions Hassas Ciltler İçin Arındırıcı ve Aydınlatıcı Tonik 200 ml","m":"TTO","k":"20"},{"b":"8680145083032","n":"TTO Dermodicos Krem 30 ml","m":"TTO","k":"20"},{"b":"8680145083094","n":"TTO Yüz Temizleme Köpüğü 200 ml","m":"TTO","k":"20"},{"b":"8680145084015","n":"TTO Clinic Kepek ve Dökülme Karşıtı Şampuan 400 ml","m":"TTO","k":"20"},{"b":"8680145084749","n":"TTO Dermodicos Krem Plus 30 ml","m":"TTO","k":"20"},{"b":"8680145085319","n":"TTO Üretto Lipo Vücut Losyonu 200 ml","m":"TTO","k":"20"},{"b":"8680176000107","n":"Imumax Baby&Kids Spray 20 ml","m":"Imumax","k":"10"},{"b":"8680186490684","n":"MELONISENK MELATONIN 3 MG 30 TABLET","m":"NBT ILAC A.S.","k":"10"},{"b":"8680244420516","n":"Abfen Nasorinse Plus Yetişkin Sinüs Kit 50 Yedek Poşet","m":"Abfen Farma","k":"10"},{"b":"8680434325256","n":"Artımed Gebelik Testi 1 Adet","m":"Artımed","k":"10"},{"b":"8680645530067","n":"MIX 12 B12 30 KAPSUL NBTLI NBTLIFE","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530074","n":"Nbt Life hc12 Takviye Edici Gıda 10 ml","m":"Nbt Life","k":"1"},{"b":"8680645530210","n":"Nbt Life Berliv Lipozomal Berberis Vulgaris 60 Kapsül","m":"Nbt Life","k":"1"},{"b":"8680645530326","n":"DUOBALANCE MOOD 30 KAPSUL PROBIYOTIK","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530449","n":"DUOBALANCE BV 14 KAPSUL PROBIYOTIK","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530500","n":"DUOBALANCE BV CRAN","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530791","n":"DUOBALANCE KIDS 10 SASE","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530838","n":"DUOBALANCE ADULTS 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530869","n":"NBTLIFE COGNILIFE 60 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530913","n":"NBTLIFE COGNILIFE 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530944","n":"DUOBALANCE HP 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530951","n":"NBTLIFE LACTOLIFE 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645530968","n":"NBTLIFE ENDOFER 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531026","n":"NBTLIFE BENFOLIFE 60 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531057","n":"NBTLIFE LONGLIFE BETULA 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531064","n":"DUOBALANCE DROP 20ML DAMLA","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531125","n":"Nbt Life Berliv Lipozomal Berberis Vulgaris 30 Kapsül","m":"Nbt Life","k":"1"},{"b":"8680645531149","n":"DUOBALANCE ORAL 10 PASTIL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531156","n":"DUOBALANCE ORAL 30 PASTIL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531194","n":"NBTLIFE COGNILIFE KIDS SURUP 150ML","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531217","n":"NBTLIFE DIMLIFE 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531224","n":"NBTLIFE ENDOFER AVANTAJLI PAKET 60 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531231","n":"NBT Life Duobalance Butyrate 30 Kapsül","m":"Nbt Life","k":"1"},{"b":"8680645531262","n":"NBTLIFE BROMELAIN PLUS CR 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680645531309","n":"NBTLIFE FICELL 30 KAPSUL","m":"NBT ILAC A.S.","k":"1"},{"b":"8680760510081","n":"MINOXIL %2 DERI SPR. 60 ML","m":"","k":"10"},{"b":"8681110200126","n":"Easy Fish Oil Portakal ve Limon Aromalı Balık Yağı ve D Vitamini 30 Jel Form","m":"EasyVit","k":"1"},{"b":"8681395440576","n":"AKY FOLIK ASIT 30 TABLET","m":"AKY","k":"1"},{"b":"8681422370180","n":"Kapa Plus Cilt Bakım Kremi 50 ml","m":"Kapa Plus","k":"20"},{"b":"8681608006100","n":"Gp-Cine 3 Days Herbal Formula Goldenseal Echinacea 100ml","m":"Immucine","k":"1"},{"b":"8681738150018","n":"Ocuvite Max 60 Kapsül Takviye Edici Gıda","m":"Ocuvite","k":"1"},{"b":"8681738150025","n":"Cebrolux S+ 30 Kapsül Sitikolin Vitamin","m":"Bausch Lomb","k":"1"},{"b":"8681738250022","n":"Cebrolux Nf 30 Saşe Sitikolin ve Çinko Takviyesi","m":"Bausch Lomb","k":"1"},{"b":"8681794082506","n":"Easy Fish Oil Q Kids Çiğnenebilir 30 Tablet","m":"Easy","k":"1"},{"b":"8681794082599","n":"Easy Fish Oil Beta Glukan Çiğnenebilir 30 Jel Form","m":"EasyVit","k":"1"},{"b":"8681863200213","n":"Valens Algalin Şurup 150 ml","m":"Valens","k":"1"},{"b":"8681944118055","n":"MEDART BALANCE 30 SASE","m":"","k":"1"},{"b":"8682125462035","n":"Newvit Probiyotik 30 Kapsül Takviye Edici Gıda","m":"Rc Farma","k":"1"},{"b":"8682368909007","n":"VELAVIT V EFFER C 1000 MG","m":"VelaVit","k":"1"},{"b":"8682368909014","n":"Orzax Ocean B Complex 60 Kapsül Takviye Edici Gıda","m":"VelaVit","k":"1"},{"b":"8682368909021","n":"Velavit V-Firstect With Colostrum Takviye Edici Gıda 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909045","n":"Velavit V-Mens Daily Takviye Edici Gıda 30 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909052","n":"Velavit V-Biotin Plus 5000 mg Takviye Edici Gıda 60 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909069","n":"Velavit V-Probiotics Enzymes Takviye Edici Gıda 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909076","n":"Velavit V-Womens Daily Takviye Edici Gıda 30 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909083","n":"Velavi V-Collagen Age Formula 30 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909090","n":"VELAVIT COENZYME Q 10 WITH PIPERINE","m":"VelaVit","k":"1"},{"b":"8682368909106","n":"VELAVIT V EFFER D3 WITH L-CYSEIN","m":"VelaVit","k":"1"},{"b":"8682368909113","n":"Velavit V-Firstect Kids with Colostrum 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909120","n":"Velavit V-D3K2 With MSM 60 Tablet Takviye Edici Gıda","m":"VelaVit","k":"1"},{"b":"8682368909137","n":"VELAVIT V MAGNESIUM POTASSIUM CITRATE 20 SASE","m":"VelaVit","k":"1"},{"b":"8682368909168","n":"VELAVIT V ARGINMEN","m":"VelaVit","k":"1"},{"b":"8682368909182","n":"Velavit Viva Vital Collagen Toz Takviye Edici Gıda 30 Saşe","m":"VelaVit","k":"1"},{"b":"8682368909199","n":"Velavit Viva Vital Collagen Toz Takviye Edici Gıda 334 gr","m":"VelaVit","k":"1"},{"b":"8682368909205","n":"Velavit V-Iron & Vitamin C Takviye Edici Gıda 30 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909212","n":"Velavit V-DHA 500 30 Yumuşak Jel Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909229","n":"VELAVIT V CRANBERRY VIT C 30 CAP.","m":"VelaVit","k":"1"},{"b":"8682368909236","n":"Velavit V-Colostrum Zencefil Zerdeçal İçeren Pastil 15 Adet","m":"VelaVit","k":"1"},{"b":"8682368909243","n":"VELAVIT PREMOM 30 TABLET","m":"VelaVit","k":"1"},{"b":"8682368909250","n":"VELAVIT V CALCIUM COMPLEX 30 TB","m":"VelaVit","k":"1"},{"b":"8682368909267","n":"VELAVIT V STJOHN S WORH RHODIOLA","m":"VelaVit","k":"1"},{"b":"8682368909274","n":"Velavit Viva Ceramide Takviye Edici Gıda 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909281","n":"Velavit Viva ClrX 60 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909298","n":"Velavit Viva AptX 60 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909304","n":"Velavit Viva BrnX 60 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909328","n":"VELAVIT COLIFLOR 10 ML","m":"VelaVit","k":"1"},{"b":"8682368909335","n":"Velavit V-Ceramide 30 mg","m":"VelaVit","k":"1"},{"b":"8682368909342","n":"VELAVIT NATTOKINASE 30 CAP.","m":"VelaVit","k":"1"},{"b":"8682368909359","n":"Velavit V-NR Takviye Edici Gıda 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909366","n":"VELAVIT LONGEVITY RESVERATROL 120 CAP","m":"VelaVit","k":"1"},{"b":"8682368909373","n":"Velavit V-PsCog 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909380","n":"VELAVIT VIVA DETX","m":"VelaVit","k":"1"},{"b":"8682368909397","n":"Velavit Viva MNP Collagen 30 Saşe","m":"VelaVit","k":"1"},{"b":"8682368909403","n":"VELAVIT LONGEVITY GLUTATHIONE WITH LIPOS 30 SASE","m":"VelaVit","k":"1"},{"b":"8682368909410","n":"VELAVIT V LACTASE 12000 30 TAB","m":"VelaVit","k":"1"},{"b":"8682368909427","n":"VELAVIT YUMMY 150 ML","m":"VelaVit","k":"1"},{"b":"8682368909441","n":"VELAVIT B COMPLEX 60 CAP.","m":"VelaVit","k":"1"},{"b":"8682368909458","n":"VELAVIT SELENIUM 200 MG 60 CAP.","m":"VelaVit","k":"1"},{"b":"8682368909465","n":"Velavit V-Bromelain 500 30 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909472","n":"VELAVIT B12 1000 60 TAB","m":"VelaVit","k":"1"},{"b":"8682368909489","n":"Velavit Dim Complex 30 Tablet","m":"VelaVit","k":"1"},{"b":"8682368909496","n":"Velavit Phytoglow Hair & Nail 120 Softjel Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909533","n":"Velavit V-Kerabiom 60 Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909540","n":"Velavit Phytoglow Anti-Hair Loss 60 Kapsül","m":"VelaVit","k":"1"},{"b":"8682368909557","n":"VELAVIT PHYTOGLOW 2 LI AVANTAJLI PAKET","m":"VelaVit","k":"1"},{"b":"8682368909564","n":"Velavit V-D3K2 Damla 20 ml","m":"VelaVit","k":"1"},{"b":"8682368909571","n":"VELAVIT V TRIPLE MAGNESIUM COMPLEX 60 CAP","m":"VelaVit","k":"1"},{"b":"8682368909595","n":"VELAVIT VITAMIN D3 GUMMY 60","m":"VelaVit","k":"1"},{"b":"8682368909601","n":"VELAVIT GOOD NIGHT GUMMY 60","m":"VelaVit","k":"1"},{"b":"8682368909618","n":"VELAVIT HAPPY KIDS GUMMY 60","m":"VelaVit","k":"1"},{"b":"8682368909625","n":"VELAVIT FOCUS GUMMY 60","m":"VelaVit","k":"1"},{"b":"8682368909632","n":"Velavit V-Active Gummy 60 Gummies","m":"VelaVit","k":"1"},{"b":"8682368909656","n":"Velavit V-SambuGuard Gummy 60 Gummies","m":"VelaVit","k":"1"},{"b":"8682368909663","n":"Velavit V-MNP Gummy 60 Çiğnenebilir Jel Form","m":"VelaVit","k":"1"},{"b":"8682368909670","n":"VELAVIT MOM TO BE 30 SOFTGEL","m":"VelaVit","k":"1"},{"b":"8682368909687","n":"Velavit V-GlutenEase 60 Kapsül Takviye Edici Gıda","m":"VelaVit","k":"1"},{"b":"8682368909700","n":"VELAVIT COLOSTRUM BALLI PASTIL","m":"VelaVit","k":"1"},{"b":"8682368909717","n":"VELAVIT BRNX CLRX DIYET KOFRE","m":"VelaVit","k":"1"},{"b":"8682368909724","n":"VELAVIT VIVA APTX CLRX DIYET KOFRE","m":"VelaVit","k":"1"},{"b":"8682368909731","n":"VELAVIT GAMER BOOST 20 EFFER","m":"VelaVit","k":"1"},{"b":"8682368909786","n":"VELAVIT V ZINC PICOLINATE 30 CAP.","m":"VelaVit","k":"1"},{"b":"8682368909793","n":"VELAVIT CURCUMıN LIPOSOMAL 30 CAP.","m":"VelaVit","k":"1"},{"b":"8682368909809","n":"VELAVIT IRON DROP 30 ML","m":"VelaVit","k":"1"},{"b":"8682368909816","n":"VELAVIT IODINE DROP 25 ML","m":"VelaVit","k":"1"},{"b":"8682368909823","n":"Velavit V-ProGuard 90 Kapsül","m":"VelaVit","k":"1"},{"b":"8682764002104","n":"AKY MAG 30 TABLET","m":"AKY","k":"1"},{"b":"8682764002135","n":"AKY Synoz 30 Flakon Kolajen","m":"AKY","k":"1"},{"b":"8682764002142","n":"AKY PEPTIDE LIQUID 30 FLAKON","m":"AKY","k":"1"},{"b":"8682764002166","n":"AKY CURCUMIN 30 TABLET","m":"AKY","k":"1"},{"b":"8682764002173","n":"AKY One 30 Şase Kolajen","m":"AKY","k":"1"},{"b":"8682764002241","n":"AKY Celadrin 30 Flakon Kolajen","m":"AKY","k":"1"},{"b":"8682773091007","n":"The Purest Solutions Intensive Pore Tightening + Lightening Serum 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091014","n":"The Purest Solutions Exfoliating Facial Peeling 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091021","n":"The Purest Solutions Hyaluronic Acid %2 + B5 Intensive Hydration Serum 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091038","n":"The Purest Solutions Arbutin 2% + Hyaluronic Acid Brightening Serum 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091052","n":"The Purest Solutions Radiance Eye Contour Serum 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091069","n":"The Purest Solutions Peptide Complex Serum 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091250","n":"The Purest Solutions Peptide Complex Serum 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091267","n":"The Purest Solutions Fruit Enzyme Powder Cleanser 55 gr","m":"The Purest Solutions","k":"20"},{"b":"8682773091274","n":"The Purest Solutions Oil Control Toner 200 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091281","n":"The Purest Solutions Postbiyotik İçerikli Arındırıcı Temizleme Yağı 150 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091298","n":"The Purest Solutions Brightening + Lightening Vitamin C Serum 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091311","n":"The Purest Solutions Hydration Booster Daily Moisturizing Cream 50 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091328","n":"The Purest Solutions T-ZONE Oil Eraser 10 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091335","n":"The Purest Solutions SPF 50 Invisible UV Protection Cream 50 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091342","n":"The Purest Solutions Vitamin B Complex Serum 30 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091687","n":"The Purest Solutions SPF50+ Blemish Defense Cream 50 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091694","n":"The Purest Solutions SPF 50 Dry Touch Protection 50 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091953","n":"The Purest Solutions Exfoliating Salicylic Acid Cleanser 200 ml","m":"The Purest Solutions","k":"20"},{"b":"8682773091960","n":"The Purest Solutions Hydrating Gentle Facial Cleanser 200 ml","m":"The Purest Solutions","k":"20"},{"b":"8683229900003","n":"Venatura İnulin ve Fruktooligosakkarit (FOS) 30 Saşe","m":"Venatura","k":"1"},{"b":"8683229900027","n":"Venatura Bromelain 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900034","n":"Venatura Karnıyarık Otu Tozu 60 Saşe","m":"Venatura","k":"1"},{"b":"8683229900058","n":"Venatura Magnezyum (Bisglisinat+Sitrat) ve P5P (Vitamin B6) 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900065","n":"VENATURA PQQ+ALA+COQ10 30 SOFTJEL","m":"VeNatura","k":"1"},{"b":"8683229900072","n":"Venatura CoQ-10 Koenzim Q10 100 mg 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900089","n":"Venatura Kids Magnezyum Şurup 100 ml","m":"Venatura","k":"1"},{"b":"8683229900096","n":"Venatura Glisin 150 gr","m":"Venatura","k":"1"},{"b":"8683229900102","n":"Venatura 5-HTP 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900119","n":"VENATURA RESVERATROL 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900126","n":"Venatura Berberis Vulgaris (Karamuk) 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900133","n":"VENATURA VITAMIN D3 1000 IU SPREY 20 ML","m":"VeNatura","k":"1"},{"b":"8683229900140","n":"VENATURA VITAMIN D3 600 IU SPREY 20 ML","m":"VeNatura","k":"1"},{"b":"8683229900157","n":"VENATURA VITAMIN D3 400 IU SPREY 20 ML","m":"VeNatura","k":"1"},{"b":"8683229900164","n":"VENATURA METILKOBALAMIN ODT 90 TABLET","m":"VeNatura","k":"1"},{"b":"8683229900188","n":"VENATURA VITAMIN K2 KOMPLEKS DAMLA 20 ML","m":"Venatura","k":"1"},{"b":"8683229900195","n":"VENATURA KROM TAKVIYE EDICI GIDA 90 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900201","n":"VENATURA SELENYUM 90 TABLET","m":"VeNatura","k":"1"},{"b":"8683229900218","n":"Venatura Çörek Otu Yağı 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900225","n":"VENATURA PROPOLIS DAMLA 30 ML","m":"VeNatura","k":"1"},{"b":"8683229900232","n":"Venatura Karnıyarık Otu Tozu 500 mg 100 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900287","n":"VENATURA L-KARNITIN VE TAURIN 25 ML 20 SISE","m":"VeNatura","k":"1"},{"b":"8683229900300","n":"Venatura Alfa Lipoik Asit 90 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900317","n":"Venatura Astaksantin 12 mg 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900324","n":"VENATURA OMEGA 3 1600 MG 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900331","n":"VENATURA N-ASETIL D-GLIKOZAMIN 90 TB","m":"VeNatura","k":"1"},{"b":"8683229900355","n":"VENATURA MAGNEZYUM SITRAT P-5-P VITAMIN 6 60 TABLET","m":"VeNatura","k":"1"},{"b":"8683229900362","n":"VENATURA OMEGA-3 60 CAP","m":"Venatura","k":"1"},{"b":"8683229900379","n":"VENATURA ULTRA OMEGA 3 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900386","n":"VENATURA ULTRA OMEGA 3 60 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900393","n":"Venatura Saw Palmetto 60 Kapsül","m":"VeNatura","k":"1"},{"b":"8683229900416","n":"Venatura Evening Primrose Oil (Primroz Yağı) 1000 mg 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900430","n":"VENATURA VITAMIN B2 100 CAP","m":"VeNatura","k":"1"},{"b":"8683229900461","n":"VENATURA SAM-E ADENOZIL METIYONIN 30 SASE","m":"VeNatura","k":"1"},{"b":"8683229900478","n":"VENATURA VITAMIN B-12 MA 30 TABLET","m":"Venatura","k":"1"},{"b":"8683229900485","n":"VENATURA VIT B12 (MTLKBLMN) ODT 30 TB","m":"VeNatura","k":"1"},{"b":"8683229900508","n":"VENATURA SELENYUM 45 TABLET","m":"VeNatura","k":"1"},{"b":"8683229900515","n":"VENATURA DEMIR 90 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900522","n":"VENATURA VITAMIN B KOMPLEKS 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900539","n":"VENATURA VITAMIN C PLUS 60 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900546","n":"VENATURA SILIMARIN DEVEDIKENI 60 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900553","n":"Venatura Çinko L-Karnosin 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900560","n":"VENATURA METILFOLAT ODT 30 TABLET","m":"VeNatura","k":"1"},{"b":"8683229900584","n":"Venatura Çinko Pikolinat 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900591","n":"Venatura D3K2 20 ml 20 mcg","m":"Venatura","k":""},{"b":"8683229900607","n":"Venatura CoQ-10 Koenzim Q10 200 mg 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900614","n":"Venatura Biotin 5000 mcg 30 Tablet","m":"Venatura","k":"1"},{"b":"8683229900621","n":"VENATURA KLORELLA 60 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900638","n":"VENATURA KOENZIM Q10 ALFA LIPOIK ASIT 60 KAPSUL","m":"Venatura","k":"1"},{"b":"8683229900645","n":"VENATURA VITAMIN A PALMITAT","m":"VeNatura","k":"1"},{"b":"8683229900652","n":"VENATURA STANDARDIZE RODIOLA KOK EKSTRESI 60 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900669","n":"Venatura Çinko Bakır 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900676","n":"VENATURA L-ARJININ 60 TABLET","m":"VeNatura","k":"1"},{"b":"8683229900683","n":"VENATURA VITAMIN K2 MENAKUINON 60 CAP","m":"VeNatura","k":"1"},{"b":"8683229900690","n":"Venatura Fosfotidilserin Ve Omega3 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900706","n":"Venatura Demir Bisglisinat Vitamin C 90 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900706-sanal","n":"Venatura Demir Bisglisinat Vitamin C 90 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900720","n":"Venatura Cranberry ve D-Mannoz 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900737","n":"Venatura Equopausa Soya İzoflavonları 20 Tablet","m":"Venatura","k":"1"},{"b":"8683229900744","n":"VENATURA METILKOBALAMIN SPREY 20 ML","m":"VeNatura","k":"1"},{"b":"8683229900751","n":"Venatura B-Trio ODT 30 Tablet","m":"Venatura","k":"1"},{"b":"8683229900768","n":"VENATURA L-TEANIN 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900775","n":"VENATURA TIP I PLUS HIDROLIZE KOLLAJEN 30 SASE","m":"VeNatura","k":"1"},{"b":"8683229900799","n":"VENATURA SR VITAMIN C 1000 MG 30 TB","m":"VeNatura","k":"1"},{"b":"8683229900805","n":"VENATURA KIDS VITAMIN D3 20 ML DAMLA.","m":"VeNatura","k":"1"},{"b":"8683229900812","n":"VENATURA MAGNEZYUM BISGLISINAT 30 CAP","m":"Venatura","k":"1"},{"b":"8683229900836","n":"Venatura D3K2 20 ml 11,25 mcg","m":"Venatura","k":"1"},{"b":"8683229900843","n":"VENATURA OREGANO OIL KOMPLEKS 30 KAP","m":"VeNatura","k":"1"},{"b":"8683229900850","n":"Venatura Çinko L-Karnosin 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229900867","n":"Venatura İyot Damla 25 ml","m":"Venatura","k":"1"},{"b":"8683229900881","n":"VENATURA KURKUMIN 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900898","n":"VENATURA KUERSETIN 60 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229900904","n":"VENATURA KIDS CINKO 100 ML","m":"VeNatura","k":"1"},{"b":"8683229900911","n":"Venatura İnositol ve Folik Asit (Metilfolat) 20 Saşe","m":"Venatura","k":"1"},{"b":"8683229900928","n":"VENATURA MAGNZYM SITRAT 60 SASE","m":"VeNatura","k":"1"},{"b":"8683229900973","n":"VENATURA VITAMIN D3 20 ML DAMLA","m":"VeNatura","k":"1"},{"b":"8683229900980","n":"Venatura Kids B12 (Metilkobalamin) Sprey 5 ml","m":"Venatura","k":"1"},{"b":"8683229901000","n":"VENATURA VIT C HYALURNIC A SRM","m":"VeNatura","k":"20"},{"b":"8683229901031","n":"Venatura Biotin 5000 Mcg 90 Tablet","m":"Venatura","k":"1"},{"b":"8683229901055","n":"VENATURA MAGNEZYUM SITRAT P-5-P 90 KAP","m":"VeNatura","k":"1"},{"b":"8683229901079","n":"VENATURA ZEAKSANTIN LUTEIN RESVERATROL VITAMIN C 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229901086","n":"VENATURA KIDS VITAMIN C 30 SASE","m":"VeNatura","k":"1"},{"b":"8683229901093","n":"Venatura Betain HCL Pepsin ve Centiyana Kökü 90 Kapsül","m":"Venatura","k":"1"},{"b":"8683229901109","n":"Venatura Kalsiyum Magnezyum Çinko ve Vitamin D3 30 Saşe","m":"Venatura","k":"1"},{"b":"8683229901116","n":"VENATURA MAGNEZYUM MALAT 60 TABLET","m":"VeNatura","k":"1"},{"b":"8683229901215","n":"VENATURA VITAMIN C 500 MG 60 KAPSUL","m":"Venatura","k":"1"},{"b":"8683229901222","n":"VENATURA HAYIT MEYVE EKSTRESI P5P VITAMIN B6","m":"Venatura","k":"1"},{"b":"8683229901277","n":"VENATURA MAGNEZYUM MALAT 60 KAP","m":"Venatura","k":"1"},{"b":"8683229901284","n":"Venatura Zencefil Ekstresi 60 Tablet","m":"Venatura","k":"1"},{"b":"8683229901291","n":"VENATURA VITAMIN B6 P-5-P 30 CAP","m":"VeNatura","k":"1"},{"b":"8683229901314","n":"VENATURA SITIKOLIN 250 MG 30 KAP","m":"VeNatura","k":"1"},{"b":"8683229901321","n":"Venatura Fosfotidilserin ve DHA Sıvı 150 ml","m":"Venatura","k":"1"},{"b":"8683229901338","n":"VENATURA MAGNEZYUM SITRAT 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229901345","n":"VENATURA TIP 1 TIP 3 HIDROLIZE KOLLAGEN 30 SASE","m":"VeNatura","k":"1"},{"b":"8683229901376","n":"Venatura Demir Sprey 15 ml","m":"Venatura","k":"1"},{"b":"8683229901383","n":"VENATURA LIPOZOMAL NMN 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229901390","n":"VENATURA LIPOZOMAL KUERSETIN 30 KAP","m":"VeNatura","k":"1"},{"b":"8683229901451","n":"Venatura Mikroenkapsüle Dim Diindolilmetan 30 Kapsül","m":"VeNatura","k":"1"},{"b":"8683229901468","n":"VENATURA LIPOZOMAL BERBERIS 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229901475","n":"VENATURA VITAMIN B6 P-5-P 150 ML","m":"VeNatura","k":"1"},{"b":"8683229901482","n":"VENATURA LIPOZOMAL KURKUMIN 30 KAP","m":"VeNatura","k":"1"},{"b":"8683229901499","n":"VENATURA LIPOZOMAL DEMIR VITAMIN C 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229901505","n":"Venatura Actazin Kuru Kivi Ektresi 30 Çiğneme Tablet","m":"VeNatura","k":"1"},{"b":"8683229901512","n":"VENATURA LIPOZOMAL VITAMIN C 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229901529","n":"Venatura D-Mannoz 2000 mg 30 Saşe","m":"VeNatura","k":"1"},{"b":"8683229901536","n":"VENATURA LIPOZOMAL RESVERATROL 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229901550","n":"Venatura Magnezyum Bisglisinat 60 Kapsül","m":"Venatura","k":"1"},{"b":"8683229901574","n":"VENATURA YESIL CAY EKSTRESI VITAMIN C 30 SASE","m":"Venatura","k":"1"},{"b":"8683229901581","n":"VENATURA PYCNOGENOL SAHIL CAM EKSTRESI 30 KAP","m":"VeNatura","k":"1"},{"b":"8683229901604","n":"VENATURA KREATIN 150 GR","m":"VeNatura","k":"1"},{"b":"8683229901611","n":"VENATURA MAGNEZYUM L-TREONAT KOKNAR EKTRESI 90 KAP","m":"VeNatura","k":"1"},{"b":"8683229901628","n":"Venatura DGL Meyan Kökü 90 Tablet","m":"Venatura","k":"1"},{"b":"8683229901635","n":"Venatura İyot Ve Selenyum Damla 30 ml","m":"Venatura","k":"1"},{"b":"8683229901642","n":"Venatura Kids Vitamin A Damla 30 ml","m":"Venatura","k":"1"},{"b":"8683229901659","n":"VENATURA MAGNEZYUM MALAT SITRAT P5P 30 SASE","m":"VeNatura","k":"1"},{"b":"8683229901673","n":"VENATURA PROBIOTIC SUPPORT 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229901680","n":"VENATURA PROBIOTIC TRANSIT 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229901727","n":"Venatura Kids Guard Laden Vitamin Mineral 10 Pastil","m":"VeNatura","k":"1"},{"b":"8683229901734","n":"Venatura Guard Vitamin ve Mineral Takviye Edici Gıda 10 Pastil","m":"VeNatura","k":"1"},{"b":"8683229901741","n":"VENATURA KIDS PROBIOTIC DAMLA 15 ML","m":"VeNatura","k":"10"},{"b":"8683229901758","n":"VENATURA LIPOZOMAL L-GLUTATYON 30 KAP","m":"VeNatura","k":"1"},{"b":"8683229901789","n":"Venatura Imumix Arı Sütü K. Mürver 15 ml","m":"VeNatura","k":"1"},{"b":"8683229901796","n":"VENATURA SAW PALMETTO PLUS 60 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229901819","n":"Venatura Kids Gummy Lipozomal Omega-3 DHA 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229901833","n":"Venatura Astaksantin 3 mg 30 Kapsül","m":"Venatura","k":"1"},{"b":"8683229902151","n":"VENATURA PASSIFLORA 30 KAPSUL","m":"VeNatura","k":"1"},{"b":"8683229902168","n":"VENATURA IMUMIX 150 ML","m":"Venatura","k":"1"},{"b":"8683229902175","n":"VENATURA PELARIM AFRIKA SARDUNYA 20 ML DAMLA","m":"Venatura","k":"1"},{"b":"8683229902199","n":"VENATURA VITB1BENFOTIAM TIAMIN 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229902205","n":"VENATURA YESIL CAY 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229902212","n":"VENATURA L-SITRULIN L ARJININ 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229902229","n":"Venatura Alfa Lipoik Asit 600 mg 30 Yumuşak Kapsül","m":"Venatura","k":"1"},{"b":"8683229902236","n":"VENATURA SAM-E 150 MG 60 KAP","m":"VeNatura","k":"1"},{"b":"8683229902243","n":"VENATURA KIDS DEMIR VITAMIN C DAMLA 20 ML","m":"Venatura","k":"1"},{"b":"8683229902267","n":"VENATURA L-GLUTATYON 250 MG 30 KAP","m":"Venatura","k":"1"},{"b":"8683229902281","n":"VENATURA DIM KOMPLEKS 60 KAP","m":"Venatura","k":"1"},{"b":"8683229902298","n":"VENATURA ALFA LIPOIK 600 MG 60 SOFTGEL","m":"Venatura","k":"1"},{"b":"8683229902304","n":"VENATURA SAFRAN EKSTRESI 60 KAP","m":"Venatura","k":"1"},{"b":"8683229902311","n":"VENATURA D3K2 1000 IU 25 MG 60 SOFT","m":"Venatura","k":"1"},{"b":"8683229902403","n":"VENATURA METAZEN BAMYA CICEGI LIMON OTU 60 KAP","m":"Venatura","k":"1"},{"b":"8683229902410","n":"VENATURA PEAIN PEA MAGNEZYUM B VITAMIN 60 KAP","m":"Venatura","k":"1"},{"b":"8683229902458","n":"VENATURA MAGNEZYUM POTASYUM 30 SASE","m":"Venatura","k":"1"},{"b":"8683229902465","n":"VENATURA VIT B12 HA 30 TABLET","m":"Venatura","k":"1"},{"b":"8683229902489","n":"VENATURA OCUMAQ MAQUI BERRY 30 KAP","m":"Venatura","k":"1"},{"b":"8683684326042","n":"Dermavia Kids Sun Cream SPF50+ Çocuk Güneş Kremi 100 Ml","m":"Dermavia","k":"10"},{"b":"8683989410002","n":"K-OTHRINE SC 50CC (BAYER)","m":"Bayer","k":"20"},{"b":"8684083320358","n":"The Purest Solutions Hassas ve Kuru Ciltler İçin Temizleyici Balm 85 gr","m":"The Purest Solutions","k":"20"},{"b":"8684083320808","n":"The Purest Solutions Hassas Ciltler İçin Arındırıcı ve Aydınlatıcı Tonik 200 ml","m":"The Purest Solutions","k":"20"},{"b":"8684962740017","n":"Velavit V-Akg Ca Takviye Edici Gıda 60 Kapsül","m":"VelaVit","k":"1"},{"b":"8684962740031","n":"Velavit V-Alpha Lipoic Acid 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8684962740055","n":"Velavit V-Pure C Liposomal Takviye Edici Gıda 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8684962740079","n":"Velavit V-Black Cumin Oil 60 Kapsül","m":"VelaVit","k":"1"},{"b":"8684962740086","n":"Velavit V-Postbiotic LB 10 Saşe","m":"VelaVit","k":"1"},{"b":"8684962740116","n":"Velavit V-Brewers Yeast 400 Tablet","m":"VelaVit","k":"1"},{"b":"8684962740123","n":"Velavit V-Rapid Vit D Takviye Edici Gıda 60 Tablet","m":"VelaVit","k":"1"},{"b":"8684962740130","n":"Velavit V-Creatine Gummy 60 Çiğnenebilir Jel Form","m":"VelaVit","k":"1"},{"b":"8684962740154","n":"Velavit V-Biotin 5000 µg Takviye Edici Gıda","m":"VelaVit","k":"1"},{"b":"8684962740161","n":"Velavit V-Butyrate Calcium 30 Kapsül Takviye Edici Gıda","m":"VelaVit","k":"1"},{"b":"8684962740178","n":"Velavit V-ThiaCarnosine L-Karnosin, Benfotiamin","m":"VelaVit","k":"1"},{"b":"8684962740192","n":"Velavit V-Ceramide R 30 Kapsül Takviye Edici Gıda","m":"VelaVit","k":"1"},{"b":"8684962740222","n":"Velavit V-Alg DHA 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8684962740246","n":"Velavit V-Sen Activated 30 Kapsül","m":"VelaVit","k":"1"},{"b":"8690546011008","n":"FARE YAPISKANI TIBTRAP 125 ML","m":"BS BASAR SAG","k":"20"},{"b":"8690595200095","n":"La Roche Posay Cicaplast Baume B5+ Yatıştırıcı ve Onarıcı Bakım Kremi 40 ml","m":"La Roche Posay","k":"20"},{"b":"8690595202310","n":"La Roche Posay Tanışma Kiti / Akneye Eğilimli ve Yağlı Ciltler İçin","m":"La Roche Posay","k":"20"},{"b":"8690712011979","n":"Zade Vital Ruşeym Yağı 60 Yumuşak Kapsül","m":"Zade Vital","k":"1"},{"b":"8690712018435","n":"Zade Vital Demir ve Prebiyotik Takviye Edici Gıda 30 Kapsül","m":"Zade","k":"1"},{"b":"8690712026423","n":"Zade Vital Feminen Probiyotik Takviye Edici Gıda 30 Kapsül","m":"Zade Vital","k":"1"},{"b":"8691091035112","n":"LAPITAK AYAKKABI & CORAP DEO","m":"Lapitak","k":"20"},{"b":"8691091035785","n":"LAPITAK KOKU ONLEYICI AYAK SPREYI 125 ML","m":"Lapitak","k":"20"},{"b":"8691091035839","n":"LAPITAK AYAK BAKIM KR","m":"Lapitak","k":"20"},{"b":"8691091035846","n":"LAPITAK TOPUK CATLAK KREMI","m":"Lapitak","k":"20"},{"b":"8691091035853","n":"Lapitak Ayak Kokusu Önleyici Krem 60 ml","m":"Lapitak","k":"20"},{"b":"8691091035860","n":"Lapitak El Bakım Kremi 60 ml","m":"Lapitak","k":"20"},{"b":"8691091035983","n":"LAPITAK AYAK KOKUSU ONLY SET","m":"Lapitak","k":"20"},{"b":"8697446865786","n":"XPECIA 60 TABLET BAYAN","m":"Xpecia","k":"1"},{"b":"8697446865793","n":"XPECIA 60 TABLET BAY","m":"Xpecia","k":"1"},{"b":"8697595870273","n":"Orzax Ocean 500 mg 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595870280","n":"OCEAN PLUS 1200 MG 50 CAP.","m":"Orzax","k":"1"},{"b":"8697595870426","n":"Orzax Cosakondrin MSM 60 Tablet","m":"Orzax","k":"1"},{"b":"8697595870563","n":"Orzax Ocean Multi Şurup 150 ml","m":"Orzax","k":"1"},{"b":"8697595870594","n":"Orzax Cosakondrin Plus Takviye Edici Gıda 60 Tablet","m":"Orzax","k":"1"},{"b":"8697595870617","n":"Orzax İmunol Şurup 150ml","m":"Orzax","k":"1"},{"b":"8697595870686","n":"Orzax Ocean Vitamin C 30 Tablet","m":"Orzax","k":"1"},{"b":"8697595870754","n":"Orzax Ocean Omega3 Şurup 150 ml - Karışık Meyve Aromalı","m":"Orzax","k":"1"},{"b":"8697595870761","n":"Orzax Ocean Omega3 Şurup 150 ml - Portakal","m":"Orzax","k":"1"},{"b":"8697595870815","n":"Orzax Ocean Omega3 Şurup 150 ml - Limon","m":"Orzax","k":"1"},{"b":"8697595870914","n":"BIGFLOR 10 SASE","m":"Orzax","k":"1"},{"b":"8697595870938","n":"BIGFLOR 10 CAP.","m":"Orzax","k":"1"},{"b":"8697595870945","n":"Orzax Ocean Vitamin Mineral - Portakal Aromalı 150ml (VM Şurup)","m":"Orzax","k":"1"},{"b":"8697595870969","n":"Orzax İmunol 40 Kapsül","m":"Orzax","k":"1"},{"b":"8697595871003","n":"Orzax Ocean Plus 1200 mg Omega 3 Balık Yağı 30 Kapsül","m":"Orzax","k":"1"},{"b":"8697595871233","n":"Orzax Ocean Bromelain Takviye Edici Gıda 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595871287","n":"Orzax Ocean Portakallı Balık Yağı + Imunol Takviye Edici Gıda 150 ml","m":"Orzax","k":"1"},{"b":"8697595871355","n":"Orzax Ocean Krill Oil 500 mg 30 Softjel Kapsül","m":"Orzax","k":"1"},{"b":"8697595871362","n":"Orzax Ocean Vitamin D3 1000 IU Sprey 20ml","m":"Orzax","k":"1"},{"b":"8697595871379","n":"Orzax Ocean Vitamin D3 400 IU Sprey 20ml","m":"Orzax","k":"1"},{"b":"8697595871423","n":"Orzax Ocean Vitamin D3 1000 IU Damla 50 ml","m":"Orzax","k":"1"},{"b":"8697595871492","n":"Orzax Ocean Vitamin D3 600 IU Sprey 20ml","m":"Orzax","k":"1"},{"b":"8697595871508","n":"Orzax Ocean Çörek Otu Yağı Takviye Edici Gıda 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595871515","n":"Orzax Ocean Çörek Otu Yağı Soğuk Sıkım 150 ml","m":"Orzax","k":"1"},{"b":"8697595871591","n":"Orzax Ocean Mummy 30 Softjel Kapsül","m":"Orzax","k":"1"},{"b":"8697595871621","n":"Orzax Ocean D3K2 Vitamin Damla 20 ml","m":"Orzax","k":"1"},{"b":"8697595871720","n":"Orzax İmunol Şurup 150 ml 2.si %50 İndirimli","m":"Orzax","k":"1"},{"b":"8697595871751","n":"Orzax Efervit Sambucus Nigra 20 Tablet","m":"Orzax","k":"1"},{"b":"8697595871812","n":"Orzax Ocean Daily One Energy Takviye Edici Gıda 30 Tablet","m":"Orzax","k":"1"},{"b":"8697595871836","n":"OCEAN PLUS 50 SOFTJEL1 ALANA 1 BEDAVA","m":"ORZAKS ILAC VE KIMYA SAN. TIC. A.S.","k":"1"},{"b":"8697595871881","n":"Orzax Ocean Portakallı Balık Yağı + VM Şurup 150 ml","m":"Orzax","k":"1"},{"b":"8697595871904","n":"Orzax Ocean Methyl B12 10 ml Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"8697595871942","n":"Orzax Ocean ExtraMag Üçlü Kombinasyon 60 Tablet","m":"Orzax","k":"1"},{"b":"8697595871959","n":"Orzax Ocean Selenyum Takviye Edici Gıda 60 Tablet","m":"Orzax","k":"1"},{"b":"8697595871966","n":"Orzax Ocean Methyl Folat 30 Tablet","m":"Orzax","k":"1"},{"b":"8697595871973","n":"Orzax Ocean 1000 mg Methyl Cobalamin B12 Sprey 5 ml","m":"Orzax","k":"1"},{"b":"8697595872000","n":"Orzax Ocean Glukozamin Komplex Takviye Edici Gıda 60 Tablet","m":"Orzax","k":"1"},{"b":"8697595872031","n":"Orzax Ocean Milk Thistle Takviye Edici Gıda 30 Tablet","m":"Orzax","k":"1"},{"b":"8697595872048","n":"Orzax Ocean Methyl Balance 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595872062","n":"Orzax Ocean Picozinc Takviye Edici Gıda 30 Tablet","m":"Orzax","k":"1"},{"b":"8697595872222","n":"Orzax Ocean Microfer Takviye Edici Gıda 30 Tablet","m":"Orzax","k":"1"},{"b":"8697595872239","n":"Orzax Ocean Microfer Takviye Edici Gıda 30 ml - Damla","m":"Orzax","k":"1"},{"b":"8697595872253","n":"Orzax Ocean Microfer Takviye Edici Gıda 30 Saşe","m":"Orzax","k":"1"},{"b":"8697595872291","n":"PROCEIVE F 30 SASE","m":"ORZAKS ILAC VE KIMYA SAN. TIC. A.S.","k":""},{"b":"8697595872307","n":"Orzax Proceive M 30 Saşe","m":"Orzax","k":"1"},{"b":"8697595872314","n":"OCEAN SELENYUM 100 MCG 30 TB.","m":"Orzax","k":"1"},{"b":"8697595872321","n":"Orzax Ocean ExtraMag Üçlü Kombinasyon 30 Tablet","m":"Orzax","k":"1"},{"b":"8697595872376","n":"Orzax Ocean Methyl Balance 30 Kapsül","m":"Orzax","k":"1"},{"b":"8697595872390","n":"Orzax Ocean Capillus Women Takviye Edici Gıda 60 Tablet","m":"Orzax","k":"1"},{"b":"8697595872420","n":"Orzax Ocean Daily One Energy 60 Tablet Tek Şişede 2.si %50 İndirimli","m":"Orzax","k":"1"},{"b":"8697595872512","n":"Orzax Ocean 5000mg D-Riboz 30 Saşe","m":"Orzax","k":"1"},{"b":"8697595872529","n":"OCEAN GUMMIES DEFENCE KIDS CIG JEL FORM","m":"ORZAKS ILAC VE KIMYA SAN. TIC. A.S.","k":"1"},{"b":"8697595872598","n":"Orzax Ocean Cranberry Turna Yemişi Ekstresi 30 Tablet","m":"Orzax","k":"1"},{"b":"8697595872604","n":"Orzax Cosakondrin Plus 90 Tablet - Aynı Fiyat %50 Daha Fazla","m":"Orzax","k":"1"},{"b":"8697595872635","n":"Orzax İmunol Sambucus Şurup 150 ml","m":"Orzax","k":"1"},{"b":"8697595872642","n":"Orzax İmunol Defence Takviye Edici Gıda 20 Saşe","m":"Orzax","k":"1"},{"b":"8697595872659","n":"Orzax Ocean Glukozamin Kompleks 60 Tablet","m":"Orzax","k":"1"},{"b":"8697595872703","n":"Orzax Ocean Ginkgo Biloba Takviye Edici Gıda 30 Bitkisel Kapsül","m":"Orzax","k":"1"},{"b":"8697595872710","n":"Orzax Ocean Krom Pikolinat 90 Bitkisel Kapsül","m":"Orzax","k":"1"},{"b":"8697595872727","n":"OCEAN POLYSITOL 400 MCG 30 SASE","m":"ORZAKS ILAC VE KIMYA SAN. TIC. A.S.","k":"1"},{"b":"8697595872758","n":"Orzax Ocean Liposomal Quercetin 100 mg 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595872765","n":"Orzax Ocean Biotin 60 Kapsül Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"8697595872772","n":"Orzax Ocean Biotin 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595872796","n":"Orzax Ocean İmunol Defence 20 Şase","m":"Orzax","k":"1"},{"b":"8697595872802","n":"Orzax İmunol Şurup 1 Alana 1 Bedava 150+150 mL","m":"Orzax","k":"1"},{"b":"8697595872826","n":"Orzax Ocean Picozinc Takviye Edici Gıda 30+15 Tablet","m":"Orzax","k":"1"},{"b":"8697595872840","n":"Orzax Ocean Microfer Lipozomal Demir Sıvı 250 ml","m":"Orzax","k":"1"},{"b":"8697595872857","n":"Orzax Ocean Iodine 150 μg İyot Takviye Edici Gıda 30 ml","m":"Orzax","k":"1"},{"b":"8697595872871","n":"Orzax Ocean B Complex Takviye Edici Gıda 50 Kapsül","m":"Orzax","k":"1"},{"b":"8697595872901","n":"Orzax Ocean Betain HCI+ Pepsin 120 Tablet","m":"Orzax","k":"1"},{"b":"8697595873052","n":"Orzax Ocean Rhodiola Kapsül 250mg 30 Kapsül","m":"Orzax","k":"1"},{"b":"8697595873069","n":"Orzax Ocean L-Arjinin 1000 mg 60 Saşe","m":"Orzax","k":"1"},{"b":"8697595873144","n":"Orzax Ocean Resveratrol 30 Kapsül","m":"Orzax","k":"1"},{"b":"8697595873427","n":"Orzax Ocean Bromelain Takviye Edici Gıda 30 Kapsül","m":"Orzax","k":"1"},{"b":"8697595873465","n":"Orzax Ocean Melatonin Takviye Edici Gıda 60 Tablet","m":"Orzax","k":"1"},{"b":"8697595873472","n":"OCEAN EXTRAMAG THREOG 200 MG 60 TB.","m":"ORZAKS ILAC VE KIMYA SAN. TIC. A.S.","k":"1"},{"b":"8697595873489","n":"Orzax Ocean L-Glutamin 5000 mg 60 Saşe","m":"Orzax","k":"1"},{"b":"8697595873519","n":"Orzax Ocean Melatonin Takviye Edici Gıda 60+30 Tablet","m":"Orzax","k":"1"},{"b":"8697595873533","n":"Orzax Ocean Vm Arginin Ps Şurup 150 ml","m":"Orzax","k":"1"},{"b":"8697595873540","n":"IMUNOL KARAMURVER CILEK AROMALI 12 PASTIL","m":"ORZAKS ILAC VE KIMYA SAN. TIC. A.S.","k":"1"},{"b":"8697595873557","n":"Orzax İmunol Pastil Portakal Aromalı 12 Yumuşak Kapsül","m":"Orzax","k":"1"},{"b":"8697595873564","n":"Orzax Ocean Enzymes Lactase Laktoz Damla 20 ml","m":"Orzax","k":"1"},{"b":"8697595873656","n":"Orzax Ocean Gummies Vitamin D3 1000 IU D3 Vitamini 60 Adet","m":"Orzax","k":"1"},{"b":"8697595873687","n":"Orzax Ocean Daily One Energy 30+30 Tablet 1 Alana 1 Bedava","m":"Orzax","k":"1"},{"b":"8697595873700","n":"Orzax Ocean Gummies Apple Cider Vinegar Takviye Edici Gıda 60 Adet","m":"Orzax","k":"1"},{"b":"8697595873724","n":"Orzax Ocean Gummies Multivitamin Kids Takviye Edici Gıda 60 Adet","m":"Orzax","k":"1"},{"b":"8697595873731","n":"Orzax Ocean Gummies Defence Kids 60 Çiğnenebilir Jel","m":"Orzax","k":"1"},{"b":"8697595873748","n":"Orzax Ocean Gummies Sambucus Kids 60 Adet Çiğnenebilir Jel Form","m":"Orzax","k":"1"},{"b":"8697595873755","n":"Orzax Ocean Cogniven İçeren Takviye Edici Gıda 30 Kapsül","m":"Orzax","k":"1"},{"b":"8697595873762","n":"Orzax Ocean Gummies Iron Demir İçeren Takviye Edici Gıda 60 Adet","m":"Orzax","k":"1"},{"b":"8697595873779","n":"Orzax Ocean Hepalex Takviye Edici Gıda 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595873786","n":"Orzax Ocean Microfer Demir ve C Vitamini 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595873793","n":"Orzax Ocean ExtraMag Üçlü Kombinasyon P5P 120 Tablet","m":"Orzax","k":"1"},{"b":"8697595873809","n":"Orzax Ocean Gummies Multivitamin Adult 60 Çiğnenebilir Jel","m":"Orzax","k":"1"},{"b":"8697595873830","n":"Orzax Ocean Osteofine 180 Tablet 3 Al 2 Öde","m":"Orzax","k":"1"},{"b":"8697595873861","n":"Day2Day The Collagen All Body 450 gr %50 Daha Fazla","m":"Day2Day","k":"1"},{"b":"8697595873885","n":"Day2day The Collagen Beauty Intense 90 Saşe - 3 al 2 öde","m":"Day2Day","k":"20"},{"b":"8697595873939","n":"Orzax Ocean Daily One Energy 30+30 Tablet 2.si %50 İndirimli","m":"Orzax","k":"1"},{"b":"8697595873984","n":"Orzax Ocean Enzymes Pancron 60 Kapsül Takviye Edici Gıda","m":"Orzax","k":"1"},{"b":"8697595874004","n":"Orzax Ocean Cogniven Likit Şurup 150 ml","m":"Orzax","k":"1"},{"b":"8697595874042","n":"Orzan Ocean Gummies Omega 3 Kids 60  Çiğnenebilir Jel Form","m":"Orzax","k":"1"},{"b":"8697595874066","n":"Orzax Ocean Hepalex 60 Yumuşak Kapsül %25 İndirimli","m":"Orzax","k":"1"},{"b":"8697595874073","n":"Orzax Ocean Çinko Bisglisinat 150 ml - Muz Aromalı (Kalemlik Hediyeli)","m":"Orzax","k":"1"},{"b":"8697595874097","n":"Orzax Ocean Gummies D3K2 60 Adet Çiğnenebilir Jel Form","m":"Orzax","k":"1"},{"b":"8697595874103","n":"Orzax Ocean Gummies Iron Extra 60 Adet Çİğnenebilir Jel Form","m":"Orzax","k":"1"},{"b":"8697595874110","n":"Orzax Ocean Gummies Multivitamin Kids & Sambucus Kids","m":"Orzax","k":"1"},{"b":"8697595874134","n":"Orzax Ocean Gummies Vitamin D3 1000 IU 60+60 Adet","m":"Orzax","k":"1"},{"b":"8697595874172","n":"Orzax Ocean Cranberry Alana Intımate Gel Hediye","m":"Orzax","k":"1"},{"b":"8697595874233","n":"Orzax Ocean Bromelain Takviye Edici Gıda 60 Kapsül","m":"Orzax","k":"1"},{"b":"8697595876091","n":"DAY2DAY COLL BEA INT 30 SASE","m":"Orzax","k":"1"},{"b":"8697595876121","n":"Day2Day The Collagen Beauty Intense 30 Saşe x 12 gr (Çilek Aromalı)","m":"Day2Day","k":"1"},{"b":"8697595876138","n":"Day2day The Collagen Beauty Intense Ananas Aromalı Kolajen Takviyesi 30 Saşe","m":"Day2Day","k":"1"},{"b":"8697595876145","n":"DAY2DAY THE COLLAGEN BEAUTY LIQUID PLUS 30 TUP","m":"ORZAKS ILAC VE KIMYA SAN. TIC. A.S.","k":"1"},{"b":"8697595876183","n":"Dr. M. Healing Mürrisafi İçeren Şurup 200 ml","m":"Day2Day","k":"1"},{"b":"8697595876190","n":"Day2Day Beauty Hyaluronic Acid+ Probiotic Serum 30 ml","m":"Day2Day","k":"1"},{"b":"8697595876220","n":"Day2Day The Collagen Mag Plus Takviye Edici Gıda 30 Şase","m":"Day2Day","k":"1"},{"b":"8697595876237","n":"Day2Day The Collagen All Body 300+300 gr 1 Alana 1 Hediye","m":"Day2Day","k":"1"},{"b":"8697595876275","n":"Day2Day The Collagen Beauty Gummies 60 Gummies Çiğnenebilir Tablet","m":"Day2Day","k":"1"},{"b":"8697796000219","n":"Dermoskin Medohbiotin Tablet 5 Mg 60 Tablet","m":"Dermoskin","k":"1"},{"b":"8697796003258","n":"Dermoskin Hair Loss Serum (Erkek) 50 ml","m":"Dermoskin","k":"20"},{"b":"8698973761961","n":"Lapitak Tırnak Bakım Kremi 15 ml","m":"Nimo","k":"20"},{"b":"8699241773457","n":"Nurse Harveys ' Burun Aspiratörü 4 Adet Yedek Uçlu","m":"Nurse Harvey's","k":"20"},{"b":"8699241775383","n":"Alvita Okyanus Suyu Burun Spreyi 100 Ml","m":"Alvita","k":"10"},{"b":"8699262000198","n":"KARDORITM 2.5 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010166","n":"PARLIN 1 MG 30 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010227","n":"TANSIFA 16/5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010234","n":"TANSIFA 16/10 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010241","n":"TANSIFA 32/5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010258","n":"TANSIFA 32/10 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010265","n":"TANSIFA PLUS 16/5/12,5 MG 28 TB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010272","n":"TANSIFA PLUS 16/10/12,5 MG 28 TB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010289","n":"TANSIFA PLUS 32/5/12,5 MG 28 TB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262010296","n":"TANSIFA PLUS 32/10/12,5 MG 28 TB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090601","n":"KARDORITM 5 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090618","n":"KARDORITM 10 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090625","n":"KARDORITM PLUS 5/12.5 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090649","n":"IRDAPIN PLUS 150/5/12.5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090656","n":"IRDAPIN PLUS 150/10/12.5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090663","n":"IRDAPIN PLUS 300/5/12.5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090670","n":"IRDAPIN PLUS 300/10/12.5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090687","n":"IRDAPIN 150/5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090694","n":"IRDAPIN 150/10 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090700","n":"IRDAPIN 300/5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262090717","n":"IRDAPIN 300/10 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262160014","n":"DUXET 30 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262160021","n":"DUXET 60 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262170020","n":"TAMIDRA MR 0.4 MG 30 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262240068","n":"ANTAX 500 MG 90 SASE","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262240082","n":"ANTAX 750 MG 90 SASE","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262240105","n":"ANTAX 1000 MG 90 SASE","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262950257","n":"EPOBEL 3000 IU 0.9 ML 6 ENJ.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262950271","n":"EPOBEL 4000 IU 0.4 ML 6 ENJ.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262950295","n":"EPOBEL 5000 IU 0.5 ML 6 ENJ.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699262950356","n":"EPOBEL 10000 IU 0.1 ML 6 ENJ.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699278480144","n":"Solante Pigmenta Lotion SPF 50+ 150 ml","m":"Solante","k":"1"},{"b":"8699540003309","n":"ETOLAX 500 MG/8 MG 14 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540010208","n":"ANTABUS 500 MG 25 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540010321","n":"GLIBEN 5 MG 100 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540011205","n":"SEFAL 25 MG 50 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540011304","n":"SEFAL FORT 75 MG 20 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540013704","n":"TYLOL 500 MG 20 TB","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540014503","n":"KONVERIL PLUS 20/12.5 MG 20 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540014602","n":"TYLOL PLUS 500/30 MG 20 TB.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540015081","n":"MELOX 7.5 MG 10 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540015135","n":"MELOX 15 MG 10 TB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540015630","n":"CANTAB 8 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540015661","n":"CANTAB 16 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540015692","n":"CANTAB 32 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540016613","n":"ABIZOL 5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540016668","n":"ABIZOL 10 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540016712","n":"ABIZOL 15 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540016767","n":"ABIZOL 20 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540016811","n":"ABIZOL 30 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540017009","n":"CANTAB PLUS 16/12.5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540017054","n":"CANTAB PLUS 32/12.5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540019614","n":"CONTUBEL %1+10+0.04 100 GR JEL","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540019782","n":"SUNUBIS 50 MG 14 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540019836","n":"JASITA MET 50/500 MG 56 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540020931","n":"PIRFECT 600 MG 120 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540021075","n":"BEKSAR %1 60 GR JEL","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540021662","n":"TAGLIN MET 50/850 MG 60 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540021679","n":"TAGLIN MET 50/1000 MG 60 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540021693","n":"TAGLIN 50 MG 56 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540022430","n":"LINATIN 5 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540022911","n":"VORISPER 200 MG 30 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540023260","n":"SUNUBIS 12.5 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540023277","n":"NITINAB 200 MG 112 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540023475","n":"ZENO 90 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540023482","n":"ZENO 180 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540023499","n":"ZENO 360 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540023833","n":"SUNUBIS 25 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540025882","n":"TIYOKAS MONO 12.5 MG 1 G 60 GR JEL","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540026469","n":"MASIPAH 10 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540026476","n":"GELTRO 75 MG 14 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540026667","n":"JASITA 100 MG 28 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540026674","n":"JASITA MET 50/850 MG 56 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540026681","n":"JASITA MET 50/1000 MG 56 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540027879","n":"GRIBEX COLD FLU 200/30/4 MG 30 FTB.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540027923","n":"PAXIBAN 2.5 MG 56 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540027954","n":"PAXIBAN 5 MG 56 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030015","n":"ETOL SR 600 MG 10 TB","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540030039","n":"KEDAY XR 50 MG 30 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030053","n":"KEDAY XR 150 MG 30 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030077","n":"KEDAY XR 200 MG 30 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030091","n":"KEDAY XR 300 MG 30 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030114","n":"KEDAY XR 400 MG 30 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030725","n":"JAGLIF 10 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030756","n":"EMPAFEL 25 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030763","n":"EMPAFEL 10 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030886","n":"ZENO S 125 MG DAG. 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030893","n":"ZENO S 250 MG DAG. 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540030909","n":"ZENO S 500 MG DAG. 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540031678","n":"EMPAFEL MET 12.5/1000 MG FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540031708","n":"EMPAFEL MET 5/850 MG FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540031715","n":"EMPAFEL MET 5/1000 MG FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540031722","n":"REBEXIP 0.5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540031739","n":"REBEXIP 1 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540031746","n":"REBEXIP 2 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540031753","n":"REBEXIP 3 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540031760","n":"REBEXIP 4 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540033658","n":"SOFEXAN 200 MG 112 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540035751","n":"GELTRO 25 MG 14 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540035768","n":"GELTRO 50 MG 14 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540036444","n":"KARGOCED 200 MG 60 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540037397","n":"EDOXTRA 30 MG FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540037403","n":"EDOXTRA 60 MG FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540037533","n":"SAPTERA 100 MG 30 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540039308","n":"LINATIN MET 2.5/1000 MG 60 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540039322","n":"LINATIN MET 2.5/850 MG 60 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540040151","n":"PULCET 40 MG 14 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540040168","n":"PULCET 40 MG 28 TB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540043770","n":"BELHALER 50/250 MCG 60 DOZ","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540043787","n":"BELHALER 50/500 MCG 60 DOZ","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540045439","n":"KARGOCED 200 MG 12 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540046207","n":"GELTRO 50 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540046214","n":"GELTRO 25 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540050938","n":"GELTRO 75 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070028","n":"OLFREX EASYTAB 2.5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070035","n":"OLFREX EASYTAB 5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070042","n":"OLFREX EASYTAB 10 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070066","n":"OLFREX EASYTAB 15 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070073","n":"OLFREX EASYTAB 20 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070080","n":"ABIZOL EASYTAB 5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070097","n":"ABIZOL EASYTAB 10 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070110","n":"ABIZOL EASYTAB 15 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070127","n":"ALZANCER EASYTAB 5 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540070134","n":"ALZANCER EASYTAB 10 MG 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090064","n":"AZAX 500 MG 3 FTB.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540090286","n":"CO-IRDA 300/25 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090620","n":"TENRIBEL 245 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090637","n":"LORCLAST 5/10 MG 30 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090743","n":"ESOM 40 MG 28 CAP.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540090767","n":"GLIVON 200 MG 60 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090781","n":"VESIFIX 5 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090798","n":"VESIFIX 10 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090811","n":"VIRENTE 0.5 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090828","n":"VIRENTE 1 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090835","n":"MEXIA BASLANGIC PAKETI 28 TB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090842","n":"MEXIA 10 MG 28 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090866","n":"MEXIA 10 MG 100 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090873","n":"MEXIA 20 MG 28 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540090972","n":"PIRFECT 200 MG 252 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091023","n":"AKSEF 500 MG 10 FTB.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540091030","n":"AKSEF 500 MG 20 FTB.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540091054","n":"AKSEF 500 MG 14 FTB.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540091108","n":"GLIVON 400 MG 30 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091115","n":"ETOL FORT 400 MG 14 FTB","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540091252","n":"PRATIN 2 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091269","n":"PRATIN 4 MG 30 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091283","n":"RETOMIN 20 MG 90 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091436","n":"NIKITABS 1,5 MG 100 FTP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091535","n":"CINESET 30 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091542","n":"CINESET 60 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091658","n":"ERTINOB 100 MG 30 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091665","n":"ERTINOB 150 MG 30 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091672","n":"LEX 20 MG 2 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091689","n":"LEX 20 MG 4 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091740","n":"LEX 5 MG 14 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540091757","n":"LEX 5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540092242","n":"LEBEL 750 MG 7 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540092716","n":"MISOL 50 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540092747","n":"MISOL 100 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540093126","n":"SINEGRA 50 MG 4 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540093157","n":"SINEGRA 100 MG 4 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540095007","n":"OLFREX 2.5 MG 28 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540095038","n":"OLFREX 5 MG 28 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540095090","n":"OLFREX 10 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540095120","n":"OLFREX 15 MG 28 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540095151","n":"OLFREX 20 MG 28 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540096417","n":"ALZANCER 5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540096462","n":"ALZANCER 10 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540096622","n":"ULTROX 5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540096660","n":"ULTROX 10 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540096707","n":"ULTROX 20 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540096745","n":"ULTROX 40 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540097865","n":"LORDES 5 MG 20 FTB","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540098459","n":"IRDA 150 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540098503","n":"IRDA 300 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540098619","n":"CO-IRDA 300/12.5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540098718","n":"CO-IRDA 150/12.5 MG 28 FTB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540099005","n":"MIVUX 100 MG 28 FTB","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540150096","n":"TISINON 5 MG 60 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540150126","n":"TISINON 10 MG 60 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540150256","n":"ERFULYN 100 MG 12 CAP.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540160095","n":"NEXETIN 20 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540160125","n":"NEXETIN 40 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540160415","n":"LANSOPROL 30 MG 28 CAP.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540160453","n":"LANSOPROL 15 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540170018","n":"MEXIA XR 14 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540170025","n":"MEXIA XR 28 MG 28 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540170032","n":"MEXIA XR BASLANGIC PAKETI 28 TB.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540170308","n":"TEOKAP SR 100 MG 30 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540170407","n":"TEOKAP SR 200 MG 30 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540170506","n":"TEOKAP SR 300 MG 30 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540171114","n":"LIPOFEN SR 250 MG 30 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540171121","n":"LIPOFEN SR 250 MG 90 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540180208","n":"FUNIT 100 MG 4 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540180215","n":"FUNIT 100 MG 15 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540180222","n":"FUNIT 100 MG 30 CAP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540250130","n":"TYLOL HOT C 12 POS","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540250321","n":"TYLOL HOT DAY 12 POS","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540270022","n":"PULCET 40 MG 1 FLK.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540270510","n":"AKSEF 750 MG IM/IV 1 FLK.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540270541","n":"AKSEF 750 MG IM 1 FLK.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540280403","n":"FUNGOSTATIN 100.000 IU 50 ML SUSP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540570078","n":"ABIZOL 1 MG 150 ML ORAL SOL.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540571204","n":"LORDES 2.5 MG 150 ML SRP.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540700253","n":"ERFULYN 200 MG 60 ML SUSP.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540701205","n":"TYLOL 120 MG 100 ML PED SUSP.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540701267","n":"TYLOL 6 PLUS 250 MG 150 ML SUSP.","m":"NOBEL ILAC SAN.VE TIC.A.S.","k":"10"},{"b":"8699540750043","n":"PARIQUEL 10 MCG 2 ML 5 AMP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540750067","n":"TIYOKAS 50 MG 2 ML 6 AMP","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699540754003","n":"MELOX 15 MG 3 AMP.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699546002313","n":"KARINCA GRANULU BAYER","m":"Bayer","k":"20"},{"b":"8699593035531","n":"CONCERTA 54 MG 30 TB.***","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593091148","n":"RISPERDAL 1 MG 20 FTB.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593091155","n":"RISPERDAL 2 MG 20 FTB.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593091162","n":"RISPERDAL 3 MG 20 FTB.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593091179","n":"RISPERDAL 4 MG 20 FTB.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593095467","n":"OPSUMIT 10 MG 28 FTB.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593151262","n":"ZAVESCA 100 MG 84 CAP.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593270024","n":"VELETRI 1.5 MG 1 FLK.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593781018","n":"RISPERDAL CONS 25 MG 1 IM FLK.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593781025","n":"RISPERDAL CONS 37.5 MG 1 IM FLK.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593781032","n":"RISPERDAL CONS 50 MG 1 IM FLK.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593791031","n":"REMICADE 100 MG 20 ML 1 FLK.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950025","n":"STELARA 90 MG 1 ML 1 ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950049","n":"XEPLION 50 MG 0.5 ML 1 ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950056","n":"XEPLION 75 MG 0.75 ML 1 ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950063","n":"XEPLION 100 MG 1 ML 1 ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950070","n":"XEPLION 150 MG 1.5 ML 1 ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950094","n":"TREVICTA 263 MG 1 IM ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950100","n":"TREVICTA 350 MG 1 IM ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950117","n":"TREVICTA 525 MG 1 IM ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950124","n":"TREMFYA 100 MG 1 ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950155","n":"SIMPONI 50 MG 0.5 ML 1 ENJ.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699593950162","n":"SIMPONI 50 MG 0.5 ML 1 PEN.","m":"JOHNSON&JOHNSON SIHHI MALZ.SAN TIC.LTD.STI.","k":"10"},{"b":"8699664900294","n":"GOZ PED EXXE YETISKIN 5LI","m":"BS BASAR SAG URUN MED SAN VE TIC LTD STI","k":"10"},{"b":"8699680570099","n":"Wellcare Omega 3 Doğal Karışık Meyve Balık Yağı 150 ml","m":"Wellcare","k":"1"},{"b":"8699707210243","n":"HAIRFORTE SPREY BAYAN 60 ML","m":"HairForte","k":"20"},{"b":"8699707210267","n":"HAIRFORTE SPREY BAY 60 ML","m":"HairForte","k":"20"},{"b":"8699733980059","n":"HEPAGAM B 312 IU 1 ML 1 FLK.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699733980073","n":"HEPAGAM B 1560 IU 5 ML 1 FLK.","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699733980769","n":"ANTI-D WIN RHO SDF 300 MCG","m":"NOBEL ILAC SAN. VE TIC.A.S.","k":"10"},{"b":"8699856700076","n":"Ocuvite Complete 60 Kapsül","m":"Ocuvite","k":"1"},{"b":"8699856710076","n":"Ocuvite Complete 60 Kapsül","m":"Bausch Lomb","k":"1"},{"b":"8699856717648","n":"OCUVITE COMP. 2LI EKO PKT 120 KAP","m":"Bausch Lomb","k":"1"},{"b":"8699956513720","n":"Bioderma Sensibio Foaming Cilt Temizleme Jeli 500 ml","m":"Bioderma","k":"20"},{"b":"8699956513812","n":"Bioderma Cicabio Creme 40ml","m":"Bioderma","k":"20"},{"b":"8699956514147","n":"Bioderma Sebium Kerato Nemlendirici Jel Krem 30 ml","m":"Bioderma","k":"20"},{"b":"883205101631","n":"Opalescence Beyazlatıcı Diş Macunu 28 gr Cool Mint","m":"Opalescence","k":"10"},{"b":"SET","n":"Caudalie Vinosun Set Çanta Hediyeli","m":"Caudalie","k":"20"},{"b":"SET-3","n":"Caudalie Vinosun Set","m":"Caudalie","k":"20"},{"b":"SET-4","n":"Caudalie Vinosun Set","m":"Caudalie","k":"20"},{"b":"SET-5","n":"Caudalie Vinosun Set","m":"Caudalie","k":"20"},{"b":"TEST-SYNC","n":"Test Sync Product","m":"Orzax","k":"20"},{"b":"VTR09200053","n":"La Roche Posay Effaclar Duo+ Bakım Kremi 40 ml + Effaclar Yağlı Ciltler Temizleme Jeli 200 ml","m":"La","k":"20"},{"b":"ZNFJ66VV8U45A","n":"Orzax Ocean Gummies 3'lü Set","m":"","k":"1"}];
+
+  const KEY_CATALOG  = 'depo_sayim_catalog_v2';
+  const KEY_ENTRIES  = 'depo_sayim_entries_v2';
+  const KEY_UNLISTED = 'depo_sayim_unlisted_v2';
+  const KEY_PREFS    = 'depo_sayim_prefs_v4';
+  const KEY_APIKEY   = 'depo_sayim_gemini_key_v2';
+
+  let catalog = [];
+  let barcodeMap = new Map();
+  let normalizedMap = new Map();
+  let entries = {};
+  let unlisted = {};
+
+  let autoOcr = false; // Hız için varsayılan kapalı
+  let html5QrCode = null;
+  let cameraActive = false;
+  let cameraPaused = false;
+  let torchOn = false;
+  let lastEntryKey = null;
+  let lastDecodedCode = '';
+  let lastDecodedTime = 0;
+
+  let listFilter = 'all';
+  let listLimit = 80;
+  let modalContext = null;
+  let tesseractLoaded = false;
+  let tesseractWorker = null;
+
+  let audioCtx = null;
+  function playBeep(type = 'ok') {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.type = type === 'ok' ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(type === 'ok' ? 1100 : 340, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + (type === 'ok' ? 0.08 : 0.2));
+    } catch (e) {}
+    if (navigator.vibrate) navigator.vibrate(type === 'ok' ? 45 : [80, 40, 80]);
+  }
+
+  function trNorm(str) {
+    return (str || '').toLocaleLowerCase('tr-TR')
+      .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's')
+      .replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
+  }
+  function stripLeadingZeros(code) { return String(code || '').trim().replace(/^0+/, '') || String(code || '').trim(); }
+  function makeEntryKey(b, p, s) { return `${String(b).trim()}||${String(p || '').trim().toUpperCase()}||${String(s || '').trim()}`; }
+
+  function initApp() {
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      document.getElementById('https-alert').style.display = 'block';
+    }
+    const nativeBadge = ('BarcodeDetector' in window) ? 'DONANIM HIZLI' : 'HIZLI';
+    document.getElementById('hdr-speed-badge').textContent = nativeBadge;
+
+    try {
+      const savedCat = localStorage.getItem(KEY_CATALOG);
+      catalog = savedCat ? JSON.parse(savedCat) : DEFAULT_CATALOG;
+      if (!Array.isArray(catalog) || catalog.length === 0) catalog = DEFAULT_CATALOG;
+    } catch (e) { catalog = DEFAULT_CATALOG; }
+
+    try { entries = JSON.parse(localStorage.getItem(KEY_ENTRIES) || '{}'); } catch (e) { entries = {}; }
+    try { unlisted = JSON.parse(localStorage.getItem(KEY_UNLISTED) || '{}'); } catch (e) { unlisted = {}; }
+    try {
+      const prefs = JSON.parse(localStorage.getItem(KEY_PREFS) || '{}');
+      if (typeof prefs.autoOcr === 'boolean') autoOcr = prefs.autoOcr;
+    } catch (e) {}
+
+    document.getElementById('chk-auto-ocr').checked = autoOcr;
+    document.getElementById('gemini-api-key').value = localStorage.getItem(KEY_APIKEY) || '';
+    rebuildIndexes();
+    populateBrands();
+    updateStats();
+    resetAndRenderList();
+  }
+
+  function savePrefs() {
+    autoOcr = document.getElementById('chk-auto-ocr').checked;
+    localStorage.setItem(KEY_PREFS, JSON.stringify({ autoOcr }));
+  }
+
+  function saveApiKey() {
+    localStorage.setItem(KEY_APIKEY, document.getElementById('gemini-api-key').value.trim());
+    showToast('API anahtarı kaydedildi', 'ok');
+  }
+
+  function rebuildIndexes() {
+    barcodeMap.clear(); normalizedMap.clear();
+    for (const p of catalog) {
+      const b = String(p.b).trim();
+      barcodeMap.set(b, p);
+      const nb = stripLeadingZeros(b);
+      if (!normalizedMap.has(nb)) normalizedMap.set(nb, p);
+    }
+    document.getElementById('catalog-size-label').textContent = catalog.length;
+    document.getElementById('sum-catalog').textContent = catalog.length;
+  }
+
+  function populateBrands() {
+    const sel = document.getElementById('brand-filter');
+    const brands = Array.from(new Set(catalog.map(p => p.m).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'tr'));
+    sel.innerHTML = '<option value="">Tüm Markalar (' + brands.length + ')</option>' +
+      brands.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(KEY_ENTRIES, JSON.stringify(entries));
+      localStorage.setItem(KEY_UNLISTED, JSON.stringify(unlisted));
+    } catch (e) { showToast('Depolama alanı dolu!', 'warn'); }
+    updateStats();
+  }
+
+  function getTotalForBarcode(barcode) {
+    let sum = 0;
+    for (const e of Object.values(entries)) if (e && e.b === barcode && e.q > 0) sum += e.q;
+    return sum;
+  }
+
+  function getEntriesForBarcode(barcode) {
+    return Object.entries(entries)
+      .filter(([, e]) => e && e.b === barcode && e.q > 0)
+      .sort((a, b) => (b[1].t || '').localeCompare(a[1].t || ''));
+  }
+
+  function updateStats() {
+    let batchCount = 0, total = 0;
+    for (const e of Object.values(entries)) if (e && e.q > 0) { batchCount++; total += e.q; }
+    document.getElementById('hdr-skus').textContent = batchCount;
+    document.getElementById('hdr-total').textContent = total;
+    document.getElementById('sum-skus').textContent = batchCount;
+    document.getElementById('sum-total').textContent = total;
+  }
+
+  function findProduct(rawCode) {
+    const code = String(rawCode || '').trim();
+    if (!code) return null;
+    if (barcodeMap.has(code)) return { product: barcodeMap.get(code), isUnlisted: false };
+    const norm = stripLeadingZeros(code);
+    if (normalizedMap.has(norm)) return { product: normalizedMap.get(norm), isUnlisted: false };
+    if (unlisted[code]) return { product: unlisted[code], isUnlisted: true };
+    return null;
+  }
+
+  // --- FAST CAMERA WITH PAUSE / RESUME (ZERO RE-INIT DELAY) ---
+  async function startCamera() {
+    if (cameraActive) return;
+    if (typeof Html5Qrcode === 'undefined') { showToast('Kamera kütüphanesi yüklenemedi.', 'warn'); return; }
+    const btn = document.getElementById('btn-cam-toggle');
+    const placeholder = document.getElementById('scanner-placeholder');
+
+    try {
+      placeholder.style.display = 'none';
+      // Donanım hızlandırmalı BarcodeDetector'ı etkinleştir!
+      html5QrCode = new Html5Qrcode('reader', {
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        verbose: false
+      });
+
+      const config = {
+        fps: 20,
+        qrbox: (w, h) => ({ width: Math.min(300, Math.floor(w * 0.85)), height: Math.min(140, Math.floor(h * 0.45)) }),
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.CODE_128
+        ]
+      };
+
+      await html5QrCode.start(
+        { facingMode: 'environment' },
+        config,
+        onBarcodeScanned,
+        () => {}
+      );
+      cameraActive = true;
+      cameraPaused = false;
+      btn.textContent = 'Kamerayı Durdur';
+      btn.classList.remove('btn-accent');
+      btn.classList.add('btn-danger');
+      checkTorchSupport();
+    } catch (err) {
+      placeholder.style.display = 'block';
+      showToast('Kamera açılamadı: ' + (err.message || 'HTTPS gerekli'), 'warn');
+    }
+  }
+
+  async function stopCamera() {
+    const btn = document.getElementById('btn-cam-toggle');
+    const placeholder = document.getElementById('scanner-placeholder');
+    document.getElementById('btn-torch').style.display = 'none';
+    torchOn = false;
+    if (cameraActive && html5QrCode) {
+      try { await html5QrCode.stop(); } catch (e) {}
+      try { html5QrCode.clear(); } catch (e) {}
+    }
+    cameraActive = false;
+    cameraPaused = false;
+    btn.textContent = 'Kamerayı Başlat';
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-accent');
+    placeholder.style.display = 'block';
+  }
+
+  function pauseCameraFast() {
+    if (cameraActive && !cameraPaused && html5QrCode) {
+      try { html5QrCode.pause(true); cameraPaused = true; } catch (e) {}
+    }
+  }
+
+  function resumeCameraFast() {
+    if (cameraActive && cameraPaused && html5QrCode) {
+      try { html5QrCode.resume(); cameraPaused = false; } catch (e) {}
+    }
+  }
+
+  function checkTorchSupport() {
+    try {
+      const caps = html5QrCode.getRunningTrackCameraCapabilities();
+      if (caps && caps.torchFeature && caps.torchFeature().isSupported()) {
+        document.getElementById('btn-torch').style.display = 'inline-flex';
+      }
+    } catch (e) {}
+  }
+
+  async function toggleTorch() {
+    try {
+      const caps = html5QrCode.getRunningTrackCameraCapabilities();
+      torchOn = !torchOn;
+      await caps.torchFeature().apply(torchOn);
+      document.getElementById('btn-torch').textContent = torchOn ? 'Fener Açık' : 'Fener';
+    } catch (e) {}
+  }
+
+  async function toggleCamera() {
+    if (cameraActive) await stopCamera();
+    else await startCamera();
+  }
+
+  function captureVideoFrame() {
+    const video = document.querySelector('#reader video');
+    if (!video || !video.videoWidth || !video.videoHeight) return null;
+    const canvas = document.getElementById('ocr-canvas');
+    const scale = Math.min(1, 1024 / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  }
+
+  function onBarcodeScanned(decodedText) {
+    if (cameraPaused || document.getElementById('qty-modal').classList.contains('open')) return;
+    const now = Date.now();
+    const code = String(decodedText).trim();
+    if (code === lastDecodedCode && (now - lastDecodedTime) < 900) return;
+
+    lastDecodedCode = code;
+    lastDecodedTime = now;
+
+    const frameDataUrl = autoOcr ? captureVideoFrame() : null;
+    // Kamerayı kapatmadan ANINDA duraklat (sıfır bekleme!)
+    pauseCameraFast();
+    processBarcode(code, frameDataUrl);
+  }
+
+  function handleManualBarcode(e) {
+    e.preventDefault();
+    const input = document.getElementById('manual-barcode');
+    const code = input.value.trim();
+    if (!code) return;
+    input.value = '';
+    if (cameraActive) pauseCameraFast();
+    processBarcode(code, null);
+  }
+
+  function processBarcode(rawCode, frameDataUrl = null) {
+    const found = findProduct(rawCode);
+    if (found) {
+      playBeep('ok');
+      openQtyModal({ barcode: found.product.b, mode: 'add', isUnlisted: found.isUnlisted, isBrandNewUnlisted: false, frameDataUrl });
+    } else {
+      playBeep('warn');
+      openQtyModal({ barcode: rawCode, mode: 'add', isUnlisted: true, isBrandNewUnlisted: true, frameDataUrl });
+    }
+  }
+
+  // --- ON-DEMAND OCR (ONLY LOADS WHEN ACTUALLY USED) ---
+  function loadTesseractScript() {
+    return new Promise((resolve, reject) => {
+      if (window.Tesseract) return resolve();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('OCR kütüphanesi yüklenemedi'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function runOcrOnImage(dataUrl) {
+    const statusBox = document.getElementById('modal-ocr-status');
+    const spinner = document.getElementById('modal-ocr-spinner');
+    const statusText = document.getElementById('modal-ocr-text');
+    statusBox.style.display = 'flex';
+    statusBox.className = 'ocr-status';
+    spinner.style.display = 'block';
+
+    const geminiKey = (localStorage.getItem(KEY_APIKEY) || '').trim();
+    try {
+      let result = { parti: '', skt: '' };
+      if (geminiKey) {
+        statusText.textContent = 'AI OCR ile okunuyor...';
+        result = await runGeminiVisionOcr(dataUrl, geminiKey);
+      } else {
+        statusText.textContent = 'Etiket okunuyor...';
+        await loadTesseractScript();
+        if (!tesseractWorker) tesseractWorker = await Tesseract.createWorker('eng', 1, { logger: () => {} });
+        const { data: { text } } = await tesseractWorker.recognize(dataUrl);
+        result = parsePartiAndSkt(text);
+      }
+      spinner.style.display = 'none';
+      if (result.parti) document.getElementById('modal-parti-input').value = result.parti;
+      if (result.skt) document.getElementById('modal-skt-input').value = result.skt;
+      if (result.parti || result.skt) {
+        statusBox.className = 'ocr-status done';
+        statusText.textContent = `Okundu: Parti ${result.parti || '—'} · SKT ${result.skt || '—'}`;
+      } else {
+        statusBox.className = 'ocr-status warn';
+        statusText.textContent = 'Net okunamadı, elle girebilirsiniz.';
+      }
+    } catch (err) {
+      spinner.style.display = 'none';
+      statusBox.className = 'ocr-status warn';
+      statusText.textContent = 'OCR hatası: ' + (err.message || '');
+    }
+  }
+
+  async function runGeminiVisionOcr(dataUrl, apiKey) {
+    const base64 = dataUrl.split(',')[1];
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const prompt = `Sadece "Parti No" (Lot/Seri No) ve "SKT/TETT" (AA/YYYY) bilgisini JSON olarak döndür: {"parti":"...","skt":"..."}`;
+    const resp = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: base64 } }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' }
+      })
+    });
+    if (!resp.ok) throw new Error('API ' + resp.status);
+    const json = await resp.json();
+    const parsed = JSON.parse((json?.candidates?.[0]?.content?.parts?.[0]?.text || '{}').replace(/```json|```/g, '').trim());
+    return { parti: (parsed.parti || '').trim().toUpperCase(), skt: normalizeDateStr(parsed.skt || '') };
+  }
+
+  function normalizeDateStr(str) {
+    const s = String(str || '').trim();
+    if (!s) return '';
+    let m = s.match(/\b(0?[1-9]|[12]\d|3[01])[.\/-](0?[1-9]|1[0-2])[.\/-](20[2-3]\d)\b/);
+    if (m) return `${m[1].padStart(2,'0')}.${m[2].padStart(2,'0')}.${m[3]}`;
+    m = s.match(/\b(0?[1-9]|1[0-2])[.\/-](20[2-3]\d)\b/);
+    if (m) return `${m[1].padStart(2,'0')}/${m[2]}`;
+    m = s.match(/\b(0?[1-9]|1[0-2])[.\/-](2[5-9]|3[0-5])\b/);
+    if (m) return `${m[1].padStart(2,'0')}/20${m[2]}`;
+    return s;
+  }
+
+  function parsePartiAndSkt(rawText) {
+    const lines = String(rawText || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    let skt = '', parti = '';
+    const ignoreRe = /(onay\s*no|rev\.?\s*\d|uretim|mfg)/i;
+    for (const line of lines) {
+      if (ignoreRe.test(line)) continue;
+      if (!skt) {
+        const m = line.match(/\b(0?[1-9]|1[0-2])\s*[.\/-]\s*(202[5-9]|203\d|2[5-9]|3[0-5])\b/);
+        if (m) skt = normalizeDateStr(m[0].replace(/\s+/g, ''));
+      }
+      if (!parti) {
+        const m = line.match(/\b(?=[A-Z0-9]{6,14}\b)(?=.*\d)(?=.*[A-Z])[A-Z0-9]+\b/i);
+        if (m) parti = m[0].toUpperCase();
+      }
+    }
+    return { parti, skt };
+  }
+
+  function handleLabelPhotoFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => runOcrOnImage(e.target.result);
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  }
+
+  // --- ENTRIES ---
+  function upsertEntry(barcode, parti, skt, qtyVal, mode = 'add', oldKey = null) {
+    const p = String(parti || '').trim().toUpperCase();
+    const s = normalizeDateStr(skt || '');
+    const key = makeEntryKey(barcode, p, s);
+    if (oldKey && oldKey !== key && entries[oldKey]) delete entries[oldKey];
+    const cur = entries[key] ? entries[key].q : 0;
+    const next = mode === 'set' ? Math.max(0, qtyVal) : Math.max(0, cur + qtyVal);
+    if (next === 0) delete entries[key];
+    else entries[key] = { b: barcode, p, s, q: next, t: new Date().toISOString() };
+    lastEntryKey = next > 0 ? key : null;
+    saveState();
+    return key;
+  }
+
+  function showLastScanned(entryKey) {
+    const e = entries[entryKey];
+    if (!e) { document.getElementById('last-scan-card').style.display = 'none'; return; }
+    lastEntryKey = entryKey;
+    const found = findProduct(e.b);
+    const prod = found ? found.product : { b: e.b, n: `Listede Olmayan (${e.b})`, m: '' };
+    const card = document.getElementById('last-scan-card');
+    card.style.display = 'block';
+    card.classList.toggle('unlisted', found ? found.isUnlisted : true);
+    document.getElementById('last-scan-status').textContent = (found && !found.isUnlisted) ? 'Son Kaydedilen' : 'Listede Olmayan Ürün';
+    document.getElementById('last-scan-time').textContent = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('last-scan-name').textContent = prod.n;
+    document.getElementById('last-scan-meta').textContent = `${prod.b}${prod.m ? ' · ' + prod.m : ''}`;
+    document.getElementById('last-scan-lots').innerHTML =
+      `<span class="lot-badge parti">Parti: ${escapeHtml(e.p || '—')}</span>` +
+      `<span class="lot-badge skt">SKT: ${escapeHtml(e.s || '—')}</span>`;
+    document.getElementById('last-scan-qty').textContent = e.q;
+  }
+
+  function adjustLast(delta) {
+    if (!lastEntryKey || !entries[lastEntryKey]) return;
+    const e = entries[lastEntryKey];
+    const key = upsertEntry(e.b, e.p, e.s, delta, 'add');
+    if (entries[key]) document.getElementById('last-scan-qty').textContent = entries[key].q;
+    else document.getElementById('last-scan-card').style.display = 'none';
+  }
+
+  function openModalForLast() {
+    if (!lastEntryKey || !entries[lastEntryKey]) return;
+    const e = entries[lastEntryKey];
+    openQtyModal({ barcode: e.b, mode: 'edit', editKey: lastEntryKey, parti: e.p, skt: e.s, qty: e.q, isUnlisted: !!unlisted[e.b] });
+  }
+
+  // --- FULL-SCREEN MODAL ---
+  function openQtyModal(opts) {
+    modalContext = opts;
+    const found = findProduct(opts.barcode);
+    const p = found ? found.product : null;
+    const totalCur = getTotalForBarcode(opts.barcode);
+
+    document.getElementById('modal-title').textContent = opts.isBrandNewUnlisted ? 'Listede Olmayan Barkod' : (opts.mode === 'edit' ? 'Stok Düzenle' : 'Stok Girişi');
+    document.getElementById('modal-product-name').textContent = p ? p.n : `Barkod: ${opts.barcode}`;
+    document.getElementById('modal-product-meta').innerHTML =
+      `<span class="barcode-tag">${escapeHtml(opts.barcode)}</span>` +
+      (p && p.m ? `<span>${escapeHtml(p.m)}</span>` : '') +
+      `<span style="margin-left:auto;font-weight:700;color:var(--accent-dark);">Mevcut: ${totalCur} ad</span>`;
+
+    document.getElementById('modal-name-wrap').style.display = opts.isBrandNewUnlisted ? 'block' : 'none';
+    document.getElementById('modal-unlisted-name').value = '';
+    document.getElementById('modal-parti-input').value = opts.parti || '';
+    document.getElementById('modal-skt-input').value = opts.skt || '';
+    document.getElementById('modal-qty-label').textContent = opts.mode === 'edit' ? 'Toplam Adet' : 'Sayılan Adet (Eklenecek)';
+    document.getElementById('modal-ocr-status').style.display = 'none';
+
+    const qtyInp = document.getElementById('modal-qty-input');
+    qtyInp.value = opts.mode === 'edit' ? (opts.qty ?? 1) : 1;
+    document.getElementById('qty-modal').classList.add('open');
+
+    if (opts.frameDataUrl) runOcrOnImage(opts.frameDataUrl);
+    else setTimeout(() => { qtyInp.focus(); qtyInp.select(); }, 60);
+  }
+
+  function setModalQty(v) { document.getElementById('modal-qty-input').value = v; }
+  function stepModalQty(delta) {
+    const inp = document.getElementById('modal-qty-input');
+    inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) + delta);
+  }
+
+  function closeQtyModal() {
+    document.getElementById('qty-modal').classList.remove('open');
+    modalContext = null;
+    resumeCameraFast();
+  }
+
+  function confirmQtyModal() {
+    if (!modalContext) return;
+    const { barcode, mode, editKey, isBrandNewUnlisted } = modalContext;
+    const val = parseInt(document.getElementById('modal-qty-input').value, 10);
+    if (isNaN(val) || val < 0) return;
+    const parti = document.getElementById('modal-parti-input').value.trim().toUpperCase();
+    const skt = normalizeDateStr(document.getElementById('modal-skt-input').value.trim());
+
+    if (isBrandNewUnlisted) {
+      const customName = document.getElementById('modal-unlisted-name').value.trim() || `Listede Olmayan (${barcode})`;
+      unlisted[barcode] = { b: barcode, n: customName, m: 'Listede Yok', k: '' };
+    }
+    const key = upsertEntry(barcode, parti, skt, val, mode === 'edit' ? 'set' : 'add', editKey || null);
+    if (entries[key]) showLastScanned(key);
+
+    document.getElementById('qty-modal').classList.remove('open');
+    modalContext = null;
+    showToast('Stok kaydedildi', 'ok');
+    if (document.getElementById('view-list').classList.contains('active')) renderList();
+    if (document.getElementById('view-counted').classList.contains('active')) renderCountedView();
+
+    // Kamera anında devam eder (bekleme yok!)
+    resumeCameraFast();
+  }
+
+  // --- LIST & COUNTED ---
+  function setListFilter(filter, el) {
+    listFilter = filter;
+    document.querySelectorAll('.filter-bar .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    resetAndRenderList();
+  }
+  function resetAndRenderList() { listLimit = 80; renderList(); }
+  function loadMoreList() { listLimit += 80; renderList(); }
+
+  function getFilteredProducts() {
+    const q = trNorm(document.getElementById('search-input').value.trim());
+    const brand = document.getElementById('brand-filter').value;
+    const allItems = [
+      ...Object.values(unlisted).map(u => ({ ...u, _unlisted: true })),
+      ...catalog.map(p => ({ ...p, _unlisted: false }))
+    ];
+    return allItems.filter(p => {
+      const qty = getTotalForBarcode(p.b);
+      if (listFilter === 'counted' && qty <= 0) return false;
+      if (listFilter === 'uncounted' && qty > 0) return false;
+      if (listFilter === 'unlisted' && !p._unlisted) return false;
+      if (brand && p.m !== brand) return false;
+      if (q && !trNorm(p.n + ' ' + p.b + ' ' + p.m).includes(q)) return false;
+      return true;
+    });
+  }
+
+  function renderList() {
+    const filtered = getFilteredProducts();
+    document.getElementById('list-count-info').textContent = `${filtered.length} ürün listeleniyor`;
+    const slice = filtered.slice(0, listLimit);
+    const container = document.getElementById('product-list');
+    if (!slice.length) {
+      container.innerHTML = '<div class="empty-state">Eşleşen ürün bulunamadı.</div>';
+      document.getElementById('btn-load-more').style.display = 'none';
+      return;
+    }
+    container.innerHTML = slice.map(p => {
+      const qty = getTotalForBarcode(p.b);
+      const batches = getEntriesForBarcode(p.b);
+      const safeB = escapeAttr(p.b);
+      const batchSummary = batches.map(([, e]) =>
+        `<span class="lot-badge ${e.s ? 'skt' : 'parti'}" style="font-size:11px;padding:1px 6px;">${escapeHtml(e.s || 'SKT Yok')}${e.p ? ' · ' + escapeHtml(e.p) : ''} (${e.q})</span>`
+      ).join('');
+      return `
+        <div class="product-item ${qty > 0 ? 'counted' : ''}">
+          <div class="product-info">
+            <div class="product-name">${escapeHtml(p.n)}</div>
+            <div class="product-sub">
+              <span class="barcode-tag">${escapeHtml(p.b)}</span>
+              ${p._unlisted ? '<span class="unlisted-tag">Listede Yok</span>' : (p.m ? `<span>${escapeHtml(p.m)}</span>` : '')}
+            </div>
+            ${batchSummary ? `<div class="product-sub" style="margin-top:5px;">${batchSummary}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+            <span style="font-size:15px;font-weight:800;color:${qty > 0 ? 'var(--accent-dark)' : 'var(--muted)'};">${qty} ad</span>
+            <button class="btn btn-primary btn-xs" onclick="openAddBatchFor('${safeB}')">+ Ekle</button>
+          </div>
+        </div>`;
+    }).join('');
+    document.getElementById('btn-load-more').style.display = filtered.length > listLimit ? 'block' : 'none';
+  }
+
+  function openAddBatchFor(barcode) {
+    const found = findProduct(barcode);
+    openQtyModal({ barcode, mode: 'add', isUnlisted: found ? found.isUnlisted : true, isBrandNewUnlisted: false, frameDataUrl: null });
+  }
+
+  function renderCountedView() {
+    const list = Object.entries(entries).filter(([, e]) => e && e.q > 0).sort((a, b) => (b[1].t || '').localeCompare(a[1].t || ''));
+    const container = document.getElementById('counted-list');
+    if (!list.length) { container.innerHTML = '<div class="empty-state">Henüz sayım yapılmadı.</div>'; return; }
+    container.innerHTML = list.map(([key, e]) => {
+      const found = findProduct(e.b);
+      const p = found ? found.product : { b: e.b, n: `Listede Olmayan (${e.b})`, m: '' };
+      const safeKey = escapeAttr(key);
+      return `
+        <div class="product-item counted">
+          <div class="product-info">
+            <div class="product-name">${escapeHtml(p.n)}</div>
+            <div class="product-sub">
+              <span class="barcode-tag">${escapeHtml(e.b)}</span>
+              <span class="lot-badge parti" style="font-size:11px;padding:1px 6px;">Parti: ${escapeHtml(e.p || '—')}</span>
+              <span class="lot-badge skt" style="font-size:11px;padding:1px 6px;">SKT: ${escapeHtml(e.s || '—')}</span>
+            </div>
+          </div>
+          <div class="qty-stepper">
+            <button class="step-btn" onclick="stepEntry('${safeKey}', -1)">−</button>
+            <input class="step-input" type="number" inputmode="numeric" min="0" value="${e.q}"
+              onchange="setEntryQty('${safeKey}', this.value)" onfocus="this.select()" />
+            <button class="step-btn plus" onclick="stepEntry('${safeKey}', 1)">+</button>
+            <button class="btn btn-outline btn-xs" style="height:34px;" onclick="editEntry('${safeKey}')">✎</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function stepEntry(key, delta) { const e = entries[key]; if (!e) return; upsertEntry(e.b, e.p, e.s, delta, 'add'); renderCountedView(); }
+  function setEntryQty(key, val) { const e = entries[key]; if (!e) return; upsertEntry(e.b, e.p, e.s, parseInt(val, 10) || 0, 'set'); renderCountedView(); }
+  function editEntry(key) { const e = entries[key]; if (!e) return; openQtyModal({ barcode: e.b, mode: 'edit', editKey: key, parti: e.p, skt: e.s, qty: e.q, isUnlisted: !!unlisted[e.b] }); }
+
+  async function switchView(name, btn) {
+    if (name !== 'scan' && cameraActive) await stopCamera();
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + name).classList.add('active');
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    if (name === 'list') renderList();
+    if (name === 'counted') renderCountedView();
+  }
+
+  function exportToExcel() {
+    if (typeof XLSX === 'undefined') { showToast('Excel kütüphanesi yüklenemedi.', 'warn'); return; }
+    const wb = XLSX.utils.book_new();
+    const sorted = Object.values(entries).filter(e => e && e.q > 0)
+      .sort((a, b) => (a.b || '').localeCompare(b.b || '') || (a.s || '').localeCompare(b.s || ''));
+
+    let sira = 1;
+    const detailRows = sorted.map(e => {
+      const found = findProduct(e.b);
+      const p = found ? found.product : { b: e.b, n: `Listede Olmayan (${e.b})`, m: '', k: '' };
+      return {
+        'Sıra': sira++, 'Ana Barkod': String(e.b), 'Ürün Adı': p.n, 'Marka': p.m || '', 'KDV %': p.k || '',
+        'Parti No': e.p || '', 'SKT / TETT': e.s || '', 'Sayılan Adet': e.q,
+        'Durum': (found && !found.isUnlisted) ? 'Listede Var' : 'Listede Yok',
+        'Son Sayım Zamanı': e.t ? new Date(e.t).toLocaleString('tr-TR') : ''
+      };
+    });
+    const wsDetail = XLSX.utils.json_to_sheet(detailRows.length ? detailRows : [{ 'Bilgi': 'Henüz sayım yapılmadı' }]);
+    wsDetail['!cols'] = [{ wch: 6 },{ wch: 18 },{ wch: 46 },{ wch: 22 },{ wch: 8 },{ wch: 16 },{ wch: 14 },{ wch: 13 },{ wch: 13 },{ wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsDetail, 'Parti ve SKT Detay');
+
+    const grouped = new Map();
+    for (const e of sorted) {
+      if (!grouped.has(e.b)) grouped.set(e.b, { q: 0, lots: [] });
+      const g = grouped.get(e.b);
+      g.q += e.q;
+      g.lots.push(`${e.s || 'SKT Yok'}${e.p ? ' / ' + e.p : ''} (${e.q})`);
+    }
+    let s2 = 1;
+    const sumRows = Array.from(grouped.entries()).map(([b, g]) => {
+      const found = findProduct(b);
+      const p = found ? found.product : { b, n: `Listede Olmayan (${b})`, m: '' };
+      return { 'Sıra': s2++, 'Ana Barkod': String(b), 'Ürün Adı': p.n, 'Marka': p.m || '', 'Toplam Sayılan Adet': g.q, 'Parti / SKT Dağılımı': g.lots.join(' ; ') };
+    });
+    const wsSum = XLSX.utils.json_to_sheet(sumRows.length ? sumRows : [{ 'Bilgi': 'Henüz sayım yapılmadı' }]);
+    wsSum['!cols'] = [{ wch: 6 },{ wch: 18 },{ wch: 46 },{ wch: 22 },{ wch: 18 },{ wch: 44 }];
+    XLSX.utils.book_append_sheet(wb, wsSum, 'Ürün Bazlı Özet');
+
+    const allRows = catalog.map((p, idx) => {
+      const g = grouped.get(p.b);
+      return { 'Sıra': idx + 1, 'Ana Barkod': String(p.b), 'Ürün Adı': p.n, 'Marka': p.m || '', 'KDV %': p.k || '', 'Toplam Sayılan Adet': g ? g.q : 0, 'Parti / SKT Dağılımı': g ? g.lots.join(' ; ') : '' };
+    });
+    const wsAll = XLSX.utils.json_to_sheet(allRows);
+    wsAll['!cols'] = [{ wch: 6 },{ wch: 18 },{ wch: 46 },{ wch: 22 },{ wch: 8 },{ wch: 18 },{ wch: 42 }];
+    XLSX.utils.book_append_sheet(wb, wsAll, 'Tüm Katalog');
+
+    const now = new Date(), pad = n => String(n).padStart(2, '0');
+    XLSX.writeFile(wb, `depo_sayim_${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`);
+    showToast('Excel dosyası indirildi', 'ok');
+  }
+
+  function handleExcelUpload(event) {
+    const file = event.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', raw: false });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+        let headerIdx = -1, colBarcode = -1, colName = -1, colBrand = -1, colKdv = -1;
+        for (let i = 0; i < Math.min(rows.length, 15); i++) {
+          const r = rows[i].map(c => trNorm(String(c).trim()));
+          const bIdx = r.findIndex(c => c.includes('barkod') || c.includes('barcode') || c === 'ean');
+          const nIdx = r.findIndex(c => c.includes('urun adi') || c.includes('urun') || c === 'ad' || c === 'name');
+          if (bIdx !== -1 && nIdx !== -1) {
+            headerIdx = i; colBarcode = bIdx; colName = nIdx;
+            colBrand = r.findIndex(c => c.includes('marka') || c.includes('brand'));
+            colKdv = r.findIndex(c => c.includes('kdv'));
+            break;
+          }
+        }
+        if (headerIdx === -1) { showToast('Barkod ve Ürün Adı sütunları bulunamadı!', 'warn'); return; }
+        const newCatalog = [];
+        for (let i = headerIdx + 1; i < rows.length; i++) {
+          const b = String(rows[i][colBarcode] || '').trim(), n = String(rows[i][colName] || '').trim();
+          if (b && n) newCatalog.push({ b, n, m: colBrand !== -1 ? String(rows[i][colBrand] || '').trim() : '', k: colKdv !== -1 ? String(rows[i][colKdv] || '').trim() : '' });
+        }
+        if (!newCatalog.length) { showToast('Geçerli ürün bulunamadı.', 'warn'); return; }
+        catalog = newCatalog;
+        localStorage.setItem(KEY_CATALOG, JSON.stringify(catalog));
+        rebuildIndexes(); populateBrands(); resetAndRenderList();
+        showToast(`${catalog.length} ürün yüklendi!`, 'ok');
+      } catch (err) { showToast('Excel okunamadı: ' + err.message, 'warn'); }
+      event.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function exportBackupJSON() {
+    const blob = new Blob([JSON.stringify({ version: 4, date: new Date().toISOString(), entries, unlisted }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `depo_sayim_yedek_${new Date().toISOString().slice(0,10)}.json`; a.click();
+    URL.revokeObjectURL(url);
+    showToast('Yedek indirildi', 'ok');
+  }
+
+  function importBackupJSON(event) {
+    const file = event.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.entries) entries = data.entries;
+        if (data.unlisted) unlisted = data.unlisted;
+        saveState(); resetAndRenderList(); renderCountedView();
+        showToast('Yedek geri yüklendi', 'ok');
+      } catch (err) { showToast('Geçersiz yedek dosyası', 'warn'); }
+      event.target.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  function resetCounts() {
+    if (!confirm('Tüm sayım kayıtları sıfırlanacak. Emin misiniz?')) return;
+    if (!confirm('Bu işlem geri alınamaz. Devam edilsin mi?')) return;
+    entries = {}; unlisted = {}; lastEntryKey = null;
+    document.getElementById('last-scan-card').style.display = 'none';
+    saveState(); resetAndRenderList(); renderCountedView();
+    showToast('Sayım sıfırlandı', 'ok');
+  }
+
+  let toastTimer = null;
+  function showToast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.className = 'show ' + type;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = ''; }, 2000);
+  }
+  function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+  function escapeAttr(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
+  window.addEventListener('DOMContentLoaded', initApp);
+</script>
+</body>
+</html>
